@@ -13,6 +13,8 @@ import 'screens/patient_dashboard_screen.dart';
 import 'screens/doctor_dashboard_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/about_screen.dart';
+import 'screens/contact_screen.dart';
+import 'theme/neuroscan_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,20 +27,10 @@ class NeuroScanApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Colors.indigo;
-    final colorScheme = ColorScheme.fromSeed(seedColor: seed);
-
     return MaterialApp(
       title: 'NeuroScan AI',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        useMaterial3: true,
-        appBarTheme: AppBarTheme(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-        ),
-      ),
+      theme: buildNeuroScanTheme(),
 
       // Start at splash so you keep existing flow; splash will route to /home
       home: const SplashScreen(),
@@ -49,11 +41,27 @@ class NeuroScanApp extends StatelessWidget {
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),
         '/upload': (_) => const UploadMRIScreen(),
-        '/results': (_) => const ResultsScreen(),
         '/patient-dashboard': (_) => const PatientDashboardScreen(),
         '/doctor-dashboard': (_) => const DoctorDashboardScreen(),
         '/admin-dashboard': (_) => const AdminDashboardScreen(),
         '/about': (_) => const AboutScreen(),
+        '/contact': (_) => const ContactScreen(),
+      },
+
+      onGenerateRoute: (settings) {
+        if (settings.name == '/results') {
+          final args = settings.arguments;
+          int? reportId;
+          if (args is Map && args['id'] != null) {
+            final v = args['id'];
+            reportId = v is int ? v : int.tryParse('$v');
+          }
+          return MaterialPageRoute<void>(
+            builder: (_) => ResultsScreen(reportId: reportId),
+            settings: settings,
+          );
+        }
+        return null;
       },
 
       // Helpful unknown route page

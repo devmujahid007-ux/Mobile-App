@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../theme/neuroscan_theme.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -19,35 +21,79 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      body: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                theme.colorScheme.primary,
-                theme.colorScheme.secondary
-              ]),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Center(
-              child: Icon(Icons.biotech,
-                  size: 48,
-                  color: Colors
-                      .white), // If IconData not found, replace with Icons.science
-            ),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              NeuroScanColors.blue50,
+              Colors.white,
+              NeuroScanColors.blue100,
+            ],
           ),
-          const SizedBox(height: 20),
-          Text('NeuroScan AI',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 6),
-          Text('MRI-based Brain Tumor & Alzheimer\'s detection',
-              style: theme.textTheme.bodyMedium),
-        ]),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      NeuroScanColors.blue600,
+                      NeuroScanColors.indigo600,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: NeuroScanColors.blue600.withValues(alpha: 0.35),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.biotech,
+                    size: 48, color: Colors.white),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'NeuroScan AI',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: NeuroScanColors.slate900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Brain Tumor & Alzheimer\'s Detection',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: NeuroScanColors.slate500,
+                ),
+              ),
+              const SizedBox(height: 28),
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: NeuroScanColors.blue600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

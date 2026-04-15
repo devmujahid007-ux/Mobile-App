@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "NeuroScan AI (Flutter, Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "program": "${workspaceFolder}/f_a_det_app/lib/main.dart",
+      "deviceId": "chrome"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/neuroscan_theme.dart';
+
 class CustomButton extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -17,16 +19,17 @@ class CustomButton extends StatelessWidget {
     return ElevatedButton.icon(
       style: ElevatedButton.styleFrom(
         minimumSize: const Size(double.infinity, 55),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: NeuroScanColors.blue600,
+        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
       onPressed: onPressed,
       icon: Icon(icon, size: 24),
       label: Text(
         text,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
       ),
     );
   }

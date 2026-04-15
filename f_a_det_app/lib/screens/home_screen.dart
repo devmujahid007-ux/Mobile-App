@@ -2,8 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 
+import '../services/neuroscan_api.dart';
+import '../services/neuroscan_api_config.dart';
+import '../theme/neuroscan_theme.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/neuroscan_footer.dart';
 
 /// ---------------- MOCK PLACEHOLDERS (safe defaults) ----------------
 class HowItWorksStep {
@@ -46,6 +51,8 @@ class ExampleOutcome {
 
 class RecentAnalysis {
   final String id;
+  /// Set when backend exposes a numeric report id (`GET /api/analyses/{id}`).
+  final int? reportId;
   final String? image; // asset or network path
   final String prediction;
   final num confidence;
@@ -56,6 +63,7 @@ class RecentAnalysis {
 
   const RecentAnalysis({
     required this.id,
+    this.reportId,
     this.image,
     required this.prediction,
     required this.confidence,
@@ -65,8 +73,46 @@ class RecentAnalysis {
     required this.downloadUrl,
   });
 
+  factory RecentAnalysis.fromBackend(Map<String, dynamic> j) {
+    final idRaw = j['id'];
+    int? rid;
+    if (idRaw is int) {
+      rid = idRaw;
+    } else if (idRaw is String) {
+      rid = int.tryParse(idRaw);
+    }
+    final patient = j['patient'];
+    var patientLabel = 'MRI Study';
+    if (patient is Map) {
+      final n = patient['name'] ?? patient['email'] ?? 'Patient';
+      final fn = j['fileName'] ?? j['file_name'] ?? 'scan';
+      patientLabel = '$n · $fn';
+    }
+    DateTime? dt;
+    try {
+      dt = DateTime.tryParse('${j['date'] ?? ''}');
+    } catch (_) {}
+    final fmt = DateFormat.yMMMd().add_jm();
+    return RecentAnalysis(
+      id: '$idRaw',
+      reportId: rid,
+      image: NeuroscanApi.absoluteUrl(j['imageUrl']?.toString()),
+      prediction: '${j['prediction'] ?? j['label'] ?? ''}',
+      confidence: j['confidence'] is num
+          ? j['confidence'] as num
+          : num.tryParse('${j['confidence']}') ?? 0,
+      patientLabel: patientLabel,
+      timeLabel: dt != null ? fmt.format(dt.toLocal()) : '—',
+      viewUrl: '/results',
+      downloadUrl: NeuroscanApi.absoluteUrl(j['reportDownloadUrl']?.toString()),
+    );
+  }
+
   factory RecentAnalysis.fromJson(Map<String, dynamic> j) => RecentAnalysis(
         id: (j['id'] ?? '').toString(),
+        reportId: j['reportId'] is int
+            ? j['reportId'] as int
+            : int.tryParse('${j['reportId'] ?? ''}'),
         image: j['image']?.toString(),
         prediction: (j['prediction'] ?? '').toString(),
         confidence: (j['confidence'] is num)
@@ -96,14 +142,15 @@ const _mockHomeSteps = <HowItWorksStep>[
 
 const _mockExample = ExampleOutcome(
   heading: 'Example Outcome',
-  title: 'Glioma likely',
-  confidenceText: 'Confidence: 92%',
-  note: 'For clinical use, confirm with a radiologist.',
+  title: 'Example Model Outcome',
+  confidenceText: 'Confidence: --',
+  note: 'Live results shown below when available.',
 );
 
 const _mockRecent = <RecentAnalysis>[
   RecentAnalysis(
     id: 'R-1001',
+    reportId: null,
     image: 'assests/images/sample1.png',
     prediction: 'Glioma',
     confidence: 92,
@@ -114,6 +161,7 @@ const _mockRecent = <RecentAnalysis>[
   ),
   RecentAnalysis(
     id: 'R-1002',
+    reportId: null,
     image: 'assests/images/sample1.png',
     prediction: 'No abnormality',
     confidence: 97,
@@ -124,6 +172,7 @@ const _mockRecent = <RecentAnalysis>[
   ),
   RecentAnalysis(
     id: 'R-1003',
+    reportId: null,
     image: 'assests/images/sample1.png',
     prediction: 'AMCI suspected',
     confidence: 74,
@@ -159,10 +208,10 @@ class FeatureCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: NeuroScanColors.blue50,
                 borderRadius: BorderRadius.circular(10)),
             alignment: Alignment.center,
-            child: Icon(icon),
+            child: Icon(icon, color: NeuroScanColors.blue600, size: 26),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -171,11 +220,13 @@ class FeatureCard extends StatelessWidget {
               children: [
                 Text(title,
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: NeuroScanColors.slate800)),
                 const SizedBox(height: 6),
                 Text(desc,
-                    style:
-                        TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+                    style: const TextStyle(
+                        fontSize: 13, color: NeuroScanColors.slate500)),
               ],
             ),
           )
@@ -237,33 +288,24 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // NOTE: This assumes the phone/emulator can reach your server at that origin.
-      // Replace with your full base URL if needed, e.g. http://10.0.2.2:8000 on Android emulator.
-      final uri = Uri.parse('/api/analyses/recent?limit=6');
-      final res = await http.get(uri);
-      if (res.statusCode >= 200 && res.statusCode < 300 && _isJson(res)) {
-        final decoded = json.decode(res.body);
-        if (decoded is List) {
-          final list = decoded
-              .map<RecentAnalysis>(
-                  (e) => RecentAnalysis.fromJson(e as Map<String, dynamic>))
-              .toList();
-          setState(() {
-            _recent = list;
-            _loadingRecent = false;
-            _errorRecent = null;
-          });
-          return;
-        }
-      }
-      // If shape/content-type is not right, treat as failure
-      throw Exception('Bad shape');
+      final decoded = await NeuroscanApi.getRecentAnalyses(limit: 6);
+      final list = decoded
+          .whereType<Map<String, dynamic>>()
+          .map(RecentAnalysis.fromBackend)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _recent = list;
+        _loadingRecent = false;
+        _errorRecent = null;
+      });
     } catch (_) {
-      // Fallback to mock data
+      if (!mounted) return;
       setState(() {
         _recent = List.of(_mockRecent);
         _loadingRecent = false;
-        _errorRecent = null; // hide error since we have fallback
+        _errorRecent =
+            'Could not reach ${NeuroscanApiConfig.baseUrl}. Showing samples.';
       });
     }
   }
@@ -277,7 +319,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // OPTIONAL: hydrate meta from /data/Home.json safely
   Future<void> _hydrateMeta() async {
     try {
-      final res = await http.get(Uri.parse('/data/Home.json'));
+      final res = await http
+          .get(Uri.parse('${NeuroscanApiConfig.baseUrl}/data/Home.json'));
       if (res.statusCode >= 200 && res.statusCode < 300 && _isJson(res)) {
         final j = json.decode(res.body);
         if (j is Map<String, dynamic>) {
@@ -323,16 +366,55 @@ class _HomeScreenState extends State<HomeScreen> {
     return img;
   }
 
+  Widget _thumbImage(String? path,
+      {double? width, double? height, BoxFit? fit, BorderRadius? radius}) {
+    Widget child;
+    final p = path ?? '';
+    if (p.startsWith('http')) {
+      child = Image.network(
+        p,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (_, __, ___) => Container(
+          width: width,
+          height: height,
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: const Icon(Icons.image_not_supported),
+        ),
+      );
+    } else {
+      child = Image.asset(
+        p.isEmpty ? 'assests/images/sample1.png' : p,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (_, __, ___) => Container(
+          width: width,
+          height: height,
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: const Icon(Icons.image_not_supported),
+        ),
+      );
+    }
+    if (radius != null) {
+      return ClipRRect(borderRadius: radius, child: child);
+    }
+    return child;
+  }
+
   @override
   Widget build(BuildContext context) {
     final first = _recent.isNotEmpty ? _recent.first : null;
 
     return AppScaffold(
-      title: 'Home',
+      title: 'NeuroScan AI',
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.blue.shade50, Colors.white],
+            colors: [NeuroScanColors.blue50, Colors.white],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -346,156 +428,168 @@ class _HomeScreenState extends State<HomeScreen> {
               LayoutBuilder(
                 builder: (context, c) {
                   final isWide = c.maxWidth >= 880;
-                  return Flex(
-                    direction: isWide ? Axis.horizontal : Axis.vertical,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisAlignment: MainAxisAlignment.start,
+                  final heroText = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Left
-                      Expanded(
-                        flex: isWide ? 1 : 0,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _assetImg('assests/images/logo.png',
-                                    width: 48,
-                                    height: 48,
-                                    fit: BoxFit.contain,
-                                    radius: BorderRadius.circular(8)),
-                                const SizedBox(width: 10),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('NeuroScan AI',
-                                        style: TextStyle(
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.w800)),
-                                    Text('Brain Tumor & Alzheimer’s Detection',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600)),
-                                  ],
-                                ),
-                              ],
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _assetImg('assests/images/logo.png',
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.contain,
+                              radius: BorderRadius.circular(8)),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('NeuroScan AI',
+                                  style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      color: NeuroScanColors.slate900)),
+                              const Text('Brain Tumor & Alzheimer’s Detection',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: NeuroScanColors.slate500)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Early, accurate MRI-based detection for Brain Tumor & Alzheimer’s',
+                        style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            height: 1.2,
+                            color: NeuroScanColors.slate900),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Upload MRI scans, get AI-powered analyses with confidence scores, and export professional reports for clinicians and patients. Built for research labs and clinical workflows.',
+                        style: TextStyle(
+                            color: NeuroScanColors.slate600, fontSize: 15),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(
+                                  color: NeuroScanColors.slate200),
+                              foregroundColor: NeuroScanColors.slate700,
                             ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Early, accurate MRI-based detection for Brain Tumor & Alzheimer’s',
-                              style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.2),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Upload MRI scans, get AI-powered analyses with confidence scores, and export professional reports for clinicians and patients. Built for research labs and clinical workflows.',
-                              style: TextStyle(color: Colors.grey.shade700),
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton(
-                                  onPressed: () =>
-                                      Navigator.pushNamed(context, '/about'),
-                                  child: const Text('Learn More'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            RichText(
-                              text: TextSpan(
+                            onPressed: () =>
+                                Navigator.pushNamed(context, '/about'),
+                            child: const Text('Learn More'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: NeuroScanColors.slate500),
+                          children: const [
+                            TextSpan(
+                                text: 'For clinicians: ',
                                 style: TextStyle(
-                                    fontSize: 12, color: Colors.grey.shade600),
-                                children: const [
-                                  TextSpan(
-                                      text: 'For clinicians: ',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black87)),
-                                  TextSpan(
-                                      text:
-                                          'HIPAA-ready architecture coming soon — contact us for early access.'),
-                                ],
-                              ),
-                            ),
+                                    fontWeight: FontWeight.w600,
+                                    color: NeuroScanColors.slate800)),
+                            TextSpan(
+                                text:
+                                    'HIPAA-ready architecture coming soon — contact us for early access.'),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      // Right (image with floating recent card)
-                      Expanded(
-                        flex: isWide ? 1 : 0,
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: kElevationToShadow[2],
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: _assetImg(
-                                'assests/images/heroMRI.jpg',
-                                height: isWide ? 320 : 240,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
+                    ],
+                  );
+                  final heroVisual = Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: kElevationToShadow[2],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _assetImg(
+                          'assests/images/heroMRI.jpg',
+                          height: isWide ? 320 : 240,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      if (first != null)
+                        Positioned(
+                          right: 16,
+                          bottom: -10,
+                          child: Container(
+                            width: 260,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: kElevationToShadow[2],
                             ),
-                            if (first != null)
-                              Positioned(
-                                right: 16,
-                                bottom: -10,
-                                child: Container(
-                                  width: 260,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    boxShadow: kElevationToShadow[2],
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: _thumbImage(
+                                    first.image ??
+                                        'assests/images/sample1.png',
+                                    width: 48,
+                                    height: 48,
+                                    fit: BoxFit.cover,
                                   ),
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: _assetImg(
-                                          first.image ??
-                                              'assests/images/sample1.png',
-                                          width: 48,
-                                          height: 48,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text('Recent analysis',
-                                                style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight:
-                                                        FontWeight.w600)),
-                                            Text(
-                                              '${first.prediction} — ${_clampPct(first.confidence)}% confidence',
-                                              style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.grey.shade600),
-                                            ),
-                                          ],
-                                        ),
+                                      const Text('Recent analysis',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600)),
+                                      Text(
+                                        '${first.prediction} — ${_clampPct(first.confidence)}% confidence',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade600),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                          ],
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                    ],
+                  );
+                  if (isWide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: heroText),
+                        const SizedBox(width: 16),
+                        Expanded(child: heroVisual),
+                      ],
+                    );
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      heroText,
+                      const SizedBox(height: 16),
+                      heroVisual,
                     ],
                   );
                 },
@@ -505,7 +599,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // ---------------- Features ----------------
               const Text('Why NeuroScan AI',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: NeuroScanColors.slate900)),
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, c) {
@@ -548,7 +645,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // ---------------- How it works ----------------
               const Text('How it works',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: NeuroScanColors.slate900)),
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, c) {
@@ -585,18 +685,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               alignment: Alignment.center,
                               child: Text('${s.step}',
-                                  style: TextStyle(
-                                      color: Colors.blue.shade700,
+                                  style: const TextStyle(
+                                      color: NeuroScanColors.blue600,
                                       fontWeight: FontWeight.w600)),
                             ),
                             const SizedBox(height: 10),
                             Text(s.title,
                                 style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600)),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: NeuroScanColors.slate800)),
                             const SizedBox(height: 6),
                             Text(s.desc,
-                                style: TextStyle(
-                                    fontSize: 13, color: Colors.grey.shade600)),
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: NeuroScanColors.slate500)),
                           ],
                         ),
                       );
@@ -612,8 +715,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Recent Analyses',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: NeuroScanColors.slate900)),
                   TextButton(
                     onPressed: () => Navigator.pushNamed(context, '/results'),
                     child: const Text('View all'),
@@ -673,7 +778,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: _assetImg(
+                              child: _thumbImage(
                                 r.image ?? 'assests/images/sample1.png',
                                 height: 150,
                                 width: double.infinity,
@@ -719,7 +824,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(999),
                                     child: LinearProgressIndicator(
-                                        value: pct / 100),
+                                      value: pct / 100,
+                                      color: NeuroScanColors.blue600,
+                                      backgroundColor: NeuroScanColors.slate100,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -732,22 +840,42 @@ class _HomeScreenState extends State<HomeScreen> {
                               spacing: 8,
                               children: [
                                 OutlinedButton(
-                                  onPressed: () {
-                                    // Navigate to details; adapt as needed
-                                    Navigator.pushNamed(context, '/result',
-                                        arguments: {'id': r.id});
-                                  },
+                                  onPressed: r.reportId == null
+                                      ? () {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'No report id yet — sign in and open from your dashboard.',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      : () {
+                                          Navigator.pushNamed(
+                                            context,
+                                            '/results',
+                                            arguments: {'id': r.reportId},
+                                          );
+                                        },
                                   child: const Text('View',
                                       style: TextStyle(fontSize: 12)),
                                 ),
                                 FilledButton(
-                                  onPressed: () {
-                                    // Replace with real download / share flow
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('Downloading (demo)…')),
-                                    );
-                                  },
+                                  onPressed: r.downloadUrl.isEmpty
+                                      ? null
+                                      : () {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: SelectableText(
+                                                r.downloadUrl,
+                                                style: const TextStyle(
+                                                    fontSize: 12),
+                                              ),
+                                            ),
+                                          );
+                                        },
                                   child: const Text('Download',
                                       style: TextStyle(fontSize: 12)),
                                 ),
@@ -774,122 +902,144 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: LayoutBuilder(
                   builder: (context, c) {
                     final isWide = c.maxWidth >= 880;
-                    return Flex(
-                      direction: isWide ? Axis.horizontal : Axis.vertical,
+                    final left = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Left text
-                        Expanded(
+                        const Text('Trusted by researchers',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: NeuroScanColors.slate900)),
+                        const SizedBox(height: 8),
+                        Text(
+                          'NeuroScan AI is built on peer-reviewed research and emphasizes transparency: every prediction includes a confidence score and visual explainability maps.',
+                          style: TextStyle(
+                              fontSize: 13, color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                            '• Explainability maps (Grad-CAM) for clinician review',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: NeuroScanColors.slate600)),
+                        const Text('• Exportable PDF & CSV reports',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: NeuroScanColors.slate600)),
+                        const Text(
+                            '• API-first design for lab integrations',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: NeuroScanColors.slate600)),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            OutlinedButton(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/about'),
+                              child: const Text('Read papers'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/contact'),
+                              child: const Text('Contact us'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                    final right = Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                NeuroScanColors.blue600,
+                                NeuroScanColors.indigo600,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: kElevationToShadow[2],
+                          ),
+                          padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('Trusted by researchers',
-                                  style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600)),
+                              Text(_exampleOutcome.heading,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white)),
                               const SizedBox(height: 8),
                               Text(
-                                'NeuroScan AI is built on peer-reviewed research and emphasizes transparency: every prediction includes a confidence score and visual explainability maps.',
-                                style: TextStyle(
-                                    fontSize: 13, color: Colors.grey.shade700),
+                                '${_exampleOutcome.title} — ${_exampleOutcome.confidenceText}',
+                                style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white),
                               ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                  '• Explainability maps (Grad-CAM) for clinician review',
-                                  style: TextStyle(fontSize: 13)),
-                              const Text('• Exportable PDF & CSV reports',
-                                  style: TextStyle(fontSize: 13)),
-                              const Text(
-                                  '• API-first design for lab integrations',
-                                  style: TextStyle(fontSize: 13)),
-                              const SizedBox(height: 10),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  OutlinedButton(
-                                    onPressed: () => Navigator.pushNamed(
-                                        context, '/resources/papers'),
-                                    child: const Text('Read papers'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pushNamed(
-                                        context, '/contact'),
-                                    child: const Text('Contact us'),
-                                  ),
-                                ],
-                              ),
+                              const SizedBox(height: 6),
+                              Text(_exampleOutcome.note,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blue.shade100)),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        // Right cards
-                        Expanded(
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: NeuroScanColors.slate50,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.all(16),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                      colors: [Colors.blue, Colors.indigo]),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: kElevationToShadow[2],
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_exampleOutcome.heading,
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white)),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      '${_exampleOutcome.title} — ${_exampleOutcome.confidenceText}',
-                                      style: const TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(_exampleOutcome.note,
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.blue.shade100)),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Supported formats',
-                                        style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600)),
-                                    const SizedBox(height: 6),
-                                    Text('DICOM, NIfTI, PNG, JPEG',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade700)),
-                                  ],
-                                ),
-                              ),
+                              const Text('Supported formats',
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 6),
+                              Text('DICOM, NIfTI, PNG, JPEG',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade700)),
                             ],
                           ),
                         ),
                       ],
                     );
+                    if (isWide) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: left),
+                          const SizedBox(width: 16),
+                          Expanded(child: right),
+                        ],
+                      );
+                    }
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        left,
+                        const SizedBox(height: 16),
+                        right,
+                      ],
+                    );
                   },
                 ),
               ),
+              const NeuroScanFooter(),
             ],
           ),
         ),

@@ -28,6 +28,9 @@ dependencies:
   # HTTP requests (for connecting to backend / model API)
   http: ^1.2.2
 
+  # Persist JWT (same flow as web localStorage token)
+  shared_preferences: ^2.2.2
+
   # JSON and Utilities
   intl: ^0.20.2
 

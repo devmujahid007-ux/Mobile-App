@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'neuroscan_drawer.dart';
+import 'neuroscan_shell.dart';
+
+/// Shell with web-style navbar (drawer + Resources + Dashboard + auth).
 class AppScaffold extends StatelessWidget {
   final String title;
   final Widget body;
   final List<Widget>? actions;
   final Widget? floatingActionButton;
-  final bool showBack;
+  final NeuroScanAuthSlot authSlot;
+  final bool showDrawer;
 
   const AppScaffold({
     super.key,
@@ -13,23 +18,18 @@ class AppScaffold extends StatelessWidget {
     required this.body,
     this.actions,
     this.floatingActionButton,
-    this.showBack = false,
+    this.authSlot = NeuroScanAuthSlot.guest,
+    this.showDrawer = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-        leading: showBack
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-        actions: actions,
-      ),
-      body: SafeArea(child: body),
+    return NeuroScanShell(
+      title: title,
+      authSlot: authSlot,
+      showDrawer: showDrawer,
+      additionalActions: actions,
+      body: body,
       floatingActionButton: floatingActionButton,
     );
   }
