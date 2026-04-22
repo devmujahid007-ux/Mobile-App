@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show debugPrint, kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 /// Base URL for the NeuroScanAi FastAPI backend (`backend/main.py`).
 ///
@@ -14,12 +14,17 @@ import 'package:flutter/foundation.dart'
 class NeuroscanApiConfig {
   NeuroscanApiConfig._();
 
+  static var _loggedResolvedBase = false;
+
   static const String _dartDefine =
       String.fromEnvironment('NEUROSCAN_API_URL', defaultValue: '');
 
   /// Set `true` only if the API runs on another device and you use Flutter **web**.
   static const bool _webUseLan =
       bool.fromEnvironment('NEUROSCAN_WEB_USE_LAN', defaultValue: false);
+
+  /// True when web should call the LAN URL from `NEUROSCAN_API_URL` (API not on this PC).
+  static bool get webUseLan => _webUseLan;
 
   /// Android emulator reaches the host via `10.0.2.2`. On a physical device,
   /// use `--dart-define=NEUROSCAN_API_URL=http://<PC_LAN_IP>:8000`.
@@ -39,8 +44,19 @@ class NeuroscanApiConfig {
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) return url;
 
+    // Flutter web is served from localhost; Chrome Private Network Access often blocks
+    // localhost ->192.168.x.x. When the API is on the same machine, use 127.0.0.1.
+    // If the API is on another device, set: --dart-define=NEUROSCAN_WEB_USE_LAN=true
     if (kIsWeb && !_webUseLan && _isPrivateLanHost(uri.host)) {
       url = uri.replace(host: '127.0.0.1').toString();
+    }
+    // baseUrl is read very often; log once to avoid flooding the console.
+    if (kDebugMode && !_loggedResolvedBase) {
+      _loggedResolvedBase = true;
+      final define = _dartDefine.isEmpty ? '(default)' : _dartDefine;
+      debugPrint(
+        'NeuroscanApi → $url | NEUROSCAN_API_URL=$define | webUseLan=$_webUseLan',
+      );
     }
     return url;
   }

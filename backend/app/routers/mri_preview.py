@@ -14,9 +14,15 @@ from app.database.db import SessionLocal
 from app.models.medical import MRIScan
 from app.models.user import User
 from app.security.jwt import get_current_user
-from app.ml.volume_io import get_preview_png, load_volume_and_shape, resolve_scan_volume_paths
+from app.ml.volume_io import collect_files_for_scan_download, get_preview_png, load_volume_and_shape
 
 router = APIRouter(prefix="/mri", tags=["MRI"])
+DATA_SCANS_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data", "scans")
+)
+LEGACY_SCANS_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "scans")
+)
 
 
 def get_db():
@@ -36,6 +42,46 @@ def _can_access_scan(scan: MRIScan, user: User) -> bool:
     if role == "doctor" and scan.doctor_id == user.id:
         return True
     return False
+
+
+def _resolve_scan_disk_path(scan: MRIScan) -> str:
+    raw = (scan.file_path or "").strip()
+    if raw and (os.path.isfile(raw) or os.path.isdir(raw)):
+        return raw
+
+    kind = "alzheimer" if (getattr(scan, "scan_kind", "") or "").lower() == "alzheimer" else "tumor"
+    candidates = [
+        os.path.join(DATA_SCANS_DIR, kind, str(scan.id)),   # new separated layout
+        os.path.join(DATA_SCANS_DIR, str(scan.id)),         # transitional layout
+        os.path.join(LEGACY_SCANS_DIR, str(scan.id)),       # legacy uploads layout
+    ]
+
+    for scan_dir in candidates:
+        if not os.path.isdir(scan_dir):
+            continue
+        if raw:
+            base = os.path.basename(raw)
+            if base:
+                candidate = os.path.join(scan_dir, base)
+                if os.path.isfile(candidate):
+                    return candidate
+        return scan_dir
+
+    # Legacy DB path remap fallback (e.g., .../uploads/scans/<id>/...)
+    if raw:
+        normalized = raw.replace("\\", "/")
+        marker = "/uploads/scans/"
+        idx = normalized.lower().find(marker)
+        if idx != -1:
+            suffix = normalized[idx + len(marker):].lstrip("/")
+            remapped_candidates = [
+                os.path.join(DATA_SCANS_DIR, kind, suffix),
+                os.path.join(DATA_SCANS_DIR, suffix),
+            ]
+            for candidate in remapped_candidates:
+                if os.path.isfile(candidate) or os.path.isdir(candidate):
+                    return candidate
+    return raw
 
 
 @router.get("/scan/{scan_id}/preview-meta")
@@ -100,19 +146,34 @@ def download_scan_volume(
         raise HTTPException(status_code=404, detail="Scan not found")
     if not _can_access_scan(scan, current):
         raise HTTPException(status_code=403, detail="Not allowed to download this scan")
-    path = scan.file_path
+    path = _resolve_scan_disk_path(scan)
     if not path:
         raise HTTPException(status_code=404, detail="Scan file missing on server")
     if os.path.isdir(path):
         try:
-            ordered_paths = resolve_scan_volume_paths(path)
+            files_to_zip = collect_files_for_scan_download(path)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Could not prepare scan download: {e}") from e
+        if not files_to_zip:
+            raise HTTPException(
+                status_code=400,
+                detail="No MRI volume files (.nii, .nii.gz, .dcm) found under this scan folder.",
+            )
 
+        root_abs = os.path.abspath(path)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for volume_path in ordered_paths:
-                archive.write(volume_path, arcname=os.path.basename(volume_path))
+            for volume_path in files_to_zip:
+                vp_abs = os.path.abspath(volume_path)
+                try:
+                    arcname = os.path.relpath(vp_abs, root_abs)
+                except ValueError:
+                    arcname = os.path.basename(vp_abs)
+                if arcname.startswith(".."):
+                    arcname = os.path.basename(vp_abs)
+                archive.write(vp_abs, arcname=arcname)
         headers = {
             "Content-Disposition": f'attachment; filename="scan_{scan_id}_modalities.zip"'
         }

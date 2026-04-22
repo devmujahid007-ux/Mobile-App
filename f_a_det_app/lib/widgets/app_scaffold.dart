@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'neuroscan_drawer.dart';
 import 'neuroscan_shell.dart';
 
-/// Shell with web-style navbar (drawer + Resources + Dashboard + auth).
+/// Shell with web-style navbar (drawer + Dashboard + auth).
 class AppScaffold extends StatelessWidget {
   final String title;
   final Widget body;

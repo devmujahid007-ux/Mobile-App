@@ -1,35 +1,39 @@
-# Start API without Docker — you MUST have MySQL 8 running first.
-#
-# 1) Install MySQL Server (https://dev.mysql.com/downloads/mysql/)
-# 2) Create database: CREATE DATABASE tumer_db;
-# 3) Edit backend\.env — MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST (usually 127.0.0.1), MYSQL_PORT, MYSQL_DB
-#
-# Then run from Mobile-app folder:
-#   .\setup_backend_no_docker.ps1
+# Start API without Docker. Requires local MySQL 8.
 
-$ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot\backend
+$ErrorActionPreference = 'Stop'
 
-if (-not (Test-Path ".\.env")) {
-    Copy-Item ".\.env.example" ".\.env"
-    Write-Host "Created .env from .env.example — edit MYSQL_PASSWORD if your MySQL root password is not 'admin'." -ForegroundColor Yellow
+$backendPath = Join-Path $PSScriptRoot 'backend'
+Set-Location $backendPath
+
+if (-not (Test-Path '.\.env')) {
+    Copy-Item '.\.env.example' '.\.env'
+    Write-Host "Created backend/.env from .env.example. Update MYSQL_PASSWORD if needed." -ForegroundColor Yellow
 }
 
-if (-not (Test-Path ".\venv\Scripts\python.exe")) {
-    Write-Host "Creating venv..." -ForegroundColor Cyan
+if (-not (Test-Path '.\venv\Scripts\python.exe')) {
+    Write-Host 'Creating venv...' -ForegroundColor Cyan
     py -3 -m venv venv
-    if (-not (Test-Path ".\venv\Scripts\python.exe")) {
+    if (-not (Test-Path '.\venv\Scripts\python.exe')) {
         python -m venv venv
     }
 }
 
-& .\venv\Scripts\Activate.ps1
-Write-Host "pip install (first run: several minutes, downloads PyTorch)..." -ForegroundColor Cyan
-pip install -r requirements.txt
+$py = Join-Path $backendPath 'venv\Scripts\python.exe'
+$pip = Join-Path $backendPath 'venv\Scripts\pip.exe'
 
-Write-Host "Creating tables..." -ForegroundColor Cyan
-python create_tables.py
+Write-Host 'Installing Python dependencies (first run can take time)...' -ForegroundColor Cyan
+& $pip install -r requirements.txt
 
-Write-Host ""
-Write-Host "Starting API — keep this window OPEN. Open http://127.0.0.1:8000/docs" -ForegroundColor Green
-uvicorn main:app --host 0.0.0.0 --port 8000
+Write-Host 'Creating/updating database tables...' -ForegroundColor Cyan
+& $py create_tables.py
+
+Write-Host ''
+Write-Host 'API on :8000 — use http://127.0.0.1:8000 in the browser (not 0.0.0.0).' -ForegroundColor Green
+Write-Host 'Docs: http://127.0.0.1:8000/docs   Health: http://127.0.0.1:8000/health' -ForegroundColor Green
+Write-Host 'Keep this window open while testing. Closing it stops the API.' -ForegroundColor Yellow
+$null = Start-Job -ScriptBlock {
+    Start-Sleep -Seconds 5
+    Start-Process 'http://127.0.0.1:8000/docs'
+}
+Write-Host 'Opening http://127.0.0.1:8000/docs in ~5 seconds...' -ForegroundColor Cyan
+& $py -m uvicorn main:app --host 0.0.0.0 --port 8000

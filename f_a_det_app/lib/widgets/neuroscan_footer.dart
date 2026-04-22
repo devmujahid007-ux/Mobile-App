@@ -32,7 +32,6 @@ class NeuroScanFooter extends StatelessWidget {
               final children = [
                 _brandBlock(),
                 _quickLinks(context),
-                _resourcesLinks(context),
                 _contactBlock(),
               ];
               if (wide) {
@@ -42,7 +41,6 @@ class NeuroScanFooter extends StatelessWidget {
                     Expanded(child: children[0]),
                     Expanded(child: children[1]),
                     Expanded(child: children[2]),
-                    Expanded(child: children[3]),
                   ],
                 );
               }
@@ -54,8 +52,6 @@ class NeuroScanFooter extends StatelessWidget {
                   children[1],
                   const SizedBox(height: 24),
                   children[2],
-                  const SizedBox(height: 24),
-                  children[3],
                 ],
               );
             },
@@ -71,7 +67,7 @@ class NeuroScanFooter extends StatelessWidget {
                     narrow ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                 children: [
                   Text(
-                    '© $year NeuroScan AI — All Rights Reserved.',
+                    '© $year NeuroScan — All Rights Reserved.',
                     style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 13),
                   ),
                   if (!narrow) const SizedBox(width: 16),
@@ -98,7 +94,7 @@ class NeuroScanFooter extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'NeuroScan AI',
+          'NeuroScan',
           style: TextStyle(
             color: Colors.white,
             fontSize: 22,
@@ -132,18 +128,6 @@ class NeuroScanFooter extends StatelessWidget {
       [
         _FooterLink('Home', () => Navigator.pushNamed(context, '/home')),
         _FooterLink('About', () => Navigator.pushNamed(context, '/about')),
-        _FooterLink('FAQ', () => Navigator.pushNamed(context, '/about')),
-      ],
-    );
-  }
-
-  Widget _resourcesLinks(BuildContext context) {
-    return _linkColumn(
-      'Resources',
-      [
-        _FooterLink('Documentation', () => Navigator.pushNamed(context, '/about')),
-        _FooterLink('Research Papers', () => Navigator.pushNamed(context, '/about')),
-        _FooterLink('Support', () => Navigator.pushNamed(context, '/contact')),
         _FooterLink('Contact', () => Navigator.pushNamed(context, '/contact')),
       ],
     );
@@ -181,7 +165,7 @@ class NeuroScanFooter extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Email: neuroscan.ai @gmail.com',
+          'Email: neuroscan148@gmail.com',
           style: TextStyle(color: Colors.grey.shade300, fontSize: 13),
         ),
         const SizedBox(height: 6),

@@ -14,6 +14,7 @@ import 'screens/doctor_dashboard_screen.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/contact_screen.dart';
+import 'services/auth_guard.dart';
 import 'theme/neuroscan_theme.dart';
 
 void main() async {
@@ -28,27 +29,51 @@ class NeuroScanApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NeuroScan AI',
+      title: 'NeuroScan',
       debugShowCheckedModeBanner: false,
       theme: buildNeuroScanTheme(),
 
       // Start at splash so you keep existing flow; splash will route to /home
       home: const SplashScreen(),
 
-      // Centralized named routes used throughout the app
+      // Public routes only; protected routes are resolved in onGenerateRoute.
       routes: {
         '/home': (_) => const HomeScreen(),
         '/login': (_) => const LoginScreen(),
         '/register': (_) => const RegisterScreen(),
         '/upload': (_) => const UploadMRIScreen(),
-        '/patient-dashboard': (_) => const PatientDashboardScreen(),
-        '/doctor-dashboard': (_) => const DoctorDashboardScreen(),
-        '/admin-dashboard': (_) => const AdminDashboardScreen(),
         '/about': (_) => const AboutScreen(),
         '/contact': (_) => const ContactScreen(),
       },
 
       onGenerateRoute: (settings) {
+        if (settings.name == '/patient-dashboard') {
+          return MaterialPageRoute<void>(
+            builder: (_) => const _ProtectedRoute(
+              allowedRoles: {'patient'},
+              child: PatientDashboardScreen(),
+            ),
+            settings: settings,
+          );
+        }
+        if (settings.name == '/doctor-dashboard') {
+          return MaterialPageRoute<void>(
+            builder: (_) => const _ProtectedRoute(
+              allowedRoles: {'doctor'},
+              child: DoctorDashboardScreen(),
+            ),
+            settings: settings,
+          );
+        }
+        if (settings.name == '/admin-dashboard') {
+          return MaterialPageRoute<void>(
+            builder: (_) => const _ProtectedRoute(
+              allowedRoles: {'admin', 'superadmin'},
+              child: AdminDashboardScreen(),
+            ),
+            settings: settings,
+          );
+        }
         if (settings.name == '/results') {
           final args = settings.arguments;
           int? reportId;
@@ -57,7 +82,9 @@ class NeuroScanApp extends StatelessWidget {
             reportId = v is int ? v : int.tryParse('$v');
           }
           return MaterialPageRoute<void>(
-            builder: (_) => ResultsScreen(reportId: reportId),
+            builder: (_) => _ProtectedRoute(
+              child: ResultsScreen(reportId: reportId),
+            ),
             settings: settings,
           );
         }
@@ -87,6 +114,62 @@ class NeuroScanApp extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ProtectedRoute extends StatefulWidget {
+  const _ProtectedRoute({
+    required this.child,
+    this.allowedRoles,
+  });
+
+  final Widget child;
+  final Set<String>? allowedRoles;
+
+  @override
+  State<_ProtectedRoute> createState() => _ProtectedRouteState();
+}
+
+class _ProtectedRouteState extends State<_ProtectedRoute> {
+  late final Future<bool> _allowedFuture;
+  bool _redirectScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _allowedFuture = AuthGuard.canAccess(allowedRoles: widget.allowedRoles);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _allowedFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.data == true) return widget.child;
+        if (_redirectScheduled) {
+          return const Scaffold(body: SizedBox.shrink());
+        }
+        _redirectScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          FocusManager.instance.primaryFocus?.unfocus();
+          final tokenFuture = AuthGuard.canAccess();
+          tokenFuture.then((hasToken) {
+            if (!context.mounted) return;
+            final target = hasToken ? '/home' : '/login';
+            Navigator.of(context).pushNamedAndRemoveUntil(target, (_) => false);
+          });
+        });
+        return const Scaffold(
+          body: SizedBox.shrink(),
+        );
+      },
     );
   }
 }

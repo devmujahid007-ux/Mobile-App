@@ -1,6 +1,6 @@
 name: neuroscan_ai
 description: >
-  NeuroScan AI — A Flutter app for MRI-based Brain Tumor and Alzheimer's detection
+  NeuroScan — A Flutter app for MRI-based Brain Tumor and Alzheimer's detection
   using deep learning and explainable AI techniques.
 publish_to: 'none' # this prevents accidental publishing
 
@@ -15,7 +15,6 @@ dependencies:
 
   # UI & Navigation
   cupertino_icons: ^1.0.8
-  google_fonts: ^6.2.1
 
   # File and Image Handling (for MRI uploads and previews)
   file_picker: ^10.3.3
@@ -27,6 +26,7 @@ dependencies:
 
   # HTTP requests (for connecting to backend / model API)
   http: ^1.2.2
+  url_launcher: ^6.3.1
 
   # Persist JWT (same flow as web localStorage token)
   shared_preferences: ^2.2.2

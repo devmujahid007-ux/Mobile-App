@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../services/auth_storage.dart';
 import '../services/neuroscan_api.dart';
+import '../services/neuroscan_api_config.dart';
 import '../theme/neuroscan_theme.dart';
 import '../widgets/neuroscan_shell.dart';
 
@@ -19,6 +21,46 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
   String? _emailErr;
   String? _passErr;
+  String? _apiHint;
+  bool _apiChecking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    SchedulerBinding.instance.addPostFrameCallback((_) => _probeBackend());
+  }
+
+  Future<void> _probeBackend() async {
+    try {
+      await NeuroscanApi.fetchHealth();
+      if (!mounted) return;
+      setState(() {
+        _apiHint = null;
+        _apiChecking = false;
+      });
+    } on NeuroscanApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _apiHint = e.message;
+        _apiChecking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _apiHint =
+            'Cannot reach ${NeuroscanApiConfig.baseUrl}. Run the backend (uvicorn) and verify NEUROSCAN_API_URL.';
+        _apiChecking = false;
+      });
+    }
+  }
+
+  String _humanizeUnknownLoginError(Object e) {
+    final t = e.toString();
+    if (t.contains('FormatException')) {
+      return 'Invalid server response. Expected API at ${NeuroscanApiConfig.baseUrl}';
+    }
+    return 'Login failed: $e';
+  }
 
   bool _validate() {
     _emailErr = null;
@@ -52,10 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (token == null || token.isEmpty) {
         throw NeuroscanApiException('No access token from server');
       }
-      await AuthStorage.setToken(token);
-      final user = await NeuroscanApi.me();
+      final roleFromToken = AuthStorage.roleFromToken(token);
+      await AuthStorage.setSession(token: token, role: roleFromToken);
       if (!mounted) return;
-      final role = (user['role'] as String? ?? 'patient').toLowerCase();
+      final role = (roleFromToken ?? 'patient').toLowerCase();
       final next = switch (role) {
         'doctor' => '/doctor-dashboard',
         'admin' => '/admin-dashboard',
@@ -68,7 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Login failed: $e');
+      setState(() => _error = _humanizeUnknownLoginError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -85,6 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return NeuroScanShell(
       title: 'Login',
+      showDrawer: false,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -123,6 +166,55 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
+                        if (_apiChecking)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: LinearProgressIndicator(minHeight: 3),
+                          ),
+                        if (_apiHint != null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Server check',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.orange.shade900,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _apiHint!,
+                                  style: TextStyle(
+                                    color: Colors.orange.shade900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'API: ${NeuroscanApiConfig.baseUrl} · open /health and /docs in a browser.',
+                                  style: TextStyle(
+                                    color: Colors.orange.shade800,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         if (_error != null)
                           Container(
                             padding: const EdgeInsets.symmetric(

@@ -2,32 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/neuroscan_theme.dart';
 
-/// Web-aligned Resources + Dashboard menus (PopupMenuButton children).
+/// Web-aligned Dashboard menu (PopupMenuButton children).
 abstract final class NeuroScanNavMenus {
-  static List<PopupMenuEntry<String>> resourcesItems(BuildContext context) {
-    return [
-      const PopupMenuItem(
-        value: 'docs',
-        child: Text('Documentation'),
-      ),
-      const PopupMenuItem(
-        value: 'papers',
-        child: Text('Research Papers'),
-      ),
-      const PopupMenuItem(
-        value: 'faq',
-        child: Text('FAQ'),
-      ),
-    ];
-  }
-
-  static void handleResourcesSelection(BuildContext context, String? value) {
-    if (value == null) return;
-    if (value == 'docs' || value == 'papers' || value == 'faq') {
-      Navigator.of(context).pushNamed('/about');
-    }
-  }
-
   static List<PopupMenuEntry<String>> dashboardItems(BuildContext context) {
     return const [
       PopupMenuItem(value: 'patient', child: Text('Patient Dashboard')),
@@ -45,25 +21,6 @@ abstract final class NeuroScanNavMenus {
     } else if (value == 'admin') {
       Navigator.of(context).pushNamed('/admin-dashboard');
     }
-  }
-
-  /// Compact trigger: icon on narrow widths, text + chevron when wide enough.
-  static Widget resourcesTrigger({required bool narrow}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          narrow ? Icons.folder_open : Icons.menu_book_outlined,
-          size: 22,
-          color: NeuroScanColors.slate700,
-        ),
-        if (!narrow) ...[
-          const SizedBox(width: 4),
-          const Text('Resources'),
-          const Icon(Icons.arrow_drop_down, color: NeuroScanColors.slate700),
-        ],
-      ],
-    );
   }
 
   static Widget dashboardTrigger({required bool narrow}) {

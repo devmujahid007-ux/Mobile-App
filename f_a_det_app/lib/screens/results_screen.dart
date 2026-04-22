@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -19,6 +22,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   bool _loading = false;
   String? _error;
   Map<String, dynamic>? _analysis;
+  int _imageTs = 0;
 
   @override
   void initState() {
@@ -48,6 +52,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       if (!mounted) return;
       setState(() {
         _analysis = data;
+        _imageTs = DateTime.now().millisecondsSinceEpoch;
         _loading = false;
       });
     } on NeuroscanApiException catch (e) {
@@ -72,7 +77,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         ? (a['confidence'] is num
             ? (a['confidence'] as num).toDouble()
             : double.tryParse('${a['confidence']}') ?? 0)
-        : 72.4;
+        : 0.0;
     final prediction = a != null ? '${a['prediction'] ?? a['label'] ?? ''}' : '—';
     final explanation = a != null ? '${a['explanation'] ?? ''}' : '';
     DateTime? dt;
@@ -81,6 +86,33 @@ class _ResultsScreenState extends State<ResultsScreen> {
     } catch (_) {}
     final dateStr = dt != null ? DateFormat.yMMMd().format(dt.toLocal()) : '—';
     final reportLabel = widget.reportId != null ? 'Report #${widget.reportId}' : 'Demo';
+    Uint8List? thumbBytes;
+    final tdu = a?['thumbnailDataUrl']?.toString();
+    if (tdu != null && tdu.startsWith('data:image')) {
+      final comma = tdu.indexOf(',');
+      if (comma >= 0) {
+        try {
+          thumbBytes = base64Decode(tdu.substring(comma + 1));
+        } catch (_) {}
+      }
+    }
+    final seg = a?['segmentation'];
+    var rawImgPath = '';
+    void pick(String? v) {
+      if (rawImgPath.isNotEmpty) return;
+      final t = v?.trim() ?? '';
+      if (t.isNotEmpty) rawImgPath = t;
+    }
+
+    pick(a?['imageUrl']?.toString());
+    pick(a?['image']?.toString());
+    if (seg is Map) {
+      pick(seg['overlay_image']?.toString());
+      pick(seg['reference_mri_png']?.toString());
+    }
+    pick(a?['output_image_url']?.toString());
+    final imageUrl = NeuroscanApi.absoluteUrl(rawImgPath);
+    final showNetworkImage = thumbBytes == null && imageUrl.isNotEmpty;
 
     return NeuroScanShell(
       title: 'Analysis Result',
@@ -192,14 +224,27 @@ class _ResultsScreenState extends State<ResultsScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (a != null && a['imageUrl'] != null)
+                    if (a != null &&
+                        thumbBytes != null &&
+                        thumbBytes.isNotEmpty)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          thumbBytes,
+                          width: 260,
+                          height: 220,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => _placeholderBox(),
+                        ),
+                      )
+                    else if (a != null && showNetworkImage)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: Image.network(
-                          NeuroscanApi.absoluteUrl(a['imageUrl']?.toString()),
+                          '${NeuroscanApi.resolveMediaUrl(imageUrl)}?t=$_imageTs',
                           width: 260,
                           height: 220,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           errorBuilder: (_, __, ___) => _placeholderBox(),
                         ),
                       )
@@ -212,26 +257,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         FilledButton(
                           onPressed: () => Navigator.of(context).maybePop(),
                           child: const Text('Close'),
-                        ),
-                        const SizedBox(width: 12),
-                        OutlinedButton(
-                          onPressed: (a == null ||
-                                  '${a['reportDownloadUrl'] ?? ''}'.isEmpty)
-                              ? null
-                              : () {
-                                  final u = NeuroscanApi.absoluteUrl(
-                                    a['reportDownloadUrl']?.toString(),
-                                  );
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: SelectableText(
-                                        u,
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ),
-                                  );
-                                },
-                          child: const Text('Report link'),
                         ),
                       ],
                     ),

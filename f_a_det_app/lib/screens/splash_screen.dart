@@ -66,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               const SizedBox(height: 22),
               const Text(
-                'NeuroScan AI',
+                'NeuroScan',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.bold,

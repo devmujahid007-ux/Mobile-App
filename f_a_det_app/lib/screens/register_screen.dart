@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../services/neuroscan_api.dart';
+import '../services/neuroscan_api_config.dart';
 import '../theme/neuroscan_theme.dart';
 import '../widgets/neuroscan_shell.dart';
 
@@ -24,6 +26,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _showPass = false;
   String? _error;
   final Map<String, String> _fieldErr = {};
+  String? _apiHint;
+  bool _apiChecking = true;
+
+  @override
+  void initState() {
+    super.initState();
+    SchedulerBinding.instance.addPostFrameCallback((_) => _probeBackend());
+  }
+
+  Future<void> _probeBackend() async {
+    try {
+      await NeuroscanApi.fetchHealth();
+      if (!mounted) return;
+      setState(() {
+        _apiHint = null;
+        _apiChecking = false;
+      });
+    } on NeuroscanApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _apiHint = e.message;
+        _apiChecking = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _apiHint =
+            'Cannot reach ${NeuroscanApiConfig.baseUrl}. Start the backend and check NEUROSCAN_API_URL.';
+        _apiChecking = false;
+      });
+    }
+  }
+
+  String _humanizeUnknownRegisterError(Object e) {
+    final t = e.toString();
+    if (t.contains('FormatException')) {
+      return 'Invalid server response at ${NeuroscanApiConfig.baseUrl}';
+    }
+    return 'Registration failed: $e';
+  }
 
   void _onRole(_Role r) {
     setState(() {
@@ -94,7 +136,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Registration failed: $e');
+      setState(() => _error = _humanizeUnknownRegisterError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -115,6 +157,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return NeuroScanShell(
       title: 'Register',
+      showDrawer: false,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -160,6 +203,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               color: NeuroScanColors.slate600, fontSize: 14),
                         ),
                         const SizedBox(height: 20),
+                        if (_apiChecking)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: LinearProgressIndicator(minHeight: 3),
+                          ),
+                        if (_apiHint != null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Text(
+                              _apiHint!,
+                              style: TextStyle(
+                                color: Colors.orange.shade900,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [

@@ -1,10 +1,1 @@
 node_modules/
-venv/
-__pycache__/
-*.py[cod]
-.env
-*.log
-uploads/*
-!uploads/.gitkeep
-data/*
-!data/**/.gitkeep

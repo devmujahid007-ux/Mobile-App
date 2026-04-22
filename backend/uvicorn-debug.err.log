@@ -1,0 +1,276 @@
+C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pydantic\_internal\_config.py:383: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+INFO:     Started server process [13524]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'mri_scans.status' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 403, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\applications.py", line 1134, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 125, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 111, in app
+    response = await f(request)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 391, in app
+    raw_response = await run_endpoint_function(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 292, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\to_thread.py", line 56, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\_backends\_asyncio.py", line 2485, in run_sync_in_worker_thread
+    return await future
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\_backends\_asyncio.py", line 976, in run
+    result = context.run(func, *args)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\app\routers\upload.py", line 124, in get_patient_scans
+    .all()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'mri_scans.status' in 'field list'")
+[SQL: SELECT mri_scans.id AS mri_scans_id, mri_scans.patient_id AS mri_scans_patient_id, mri_scans.doctor_id AS mri_scans_doctor_id, mri_scans.file_path AS mri_scans_file_path, mri_scans.status AS mri_scans_status, mri_scans.upload_date AS mri_scans_upload_date, mri_scans.sent_date AS mri_scans_sent_date 
+FROM mri_scans 
+WHERE mri_scans.patient_id = %(patient_id_1)s ORDER BY mri_scans.upload_date DESC, mri_scans.id DESC]
+[parameters: {'patient_id_1': 13}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+pymysql.err.OperationalError: (1054, "Unknown column 'status' in 'field list'")
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\uvicorn\protocols\http\h11_impl.py", line 403, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\uvicorn\middleware\proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\applications.py", line 1134, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\applications.py", line 107, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 125, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 111, in app
+    response = await f(request)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 391, in app
+    raw_response = await run_endpoint_function(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\fastapi\routing.py", line 292, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\starlette\concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\to_thread.py", line 56, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\_backends\_asyncio.py", line 2485, in run_sync_in_worker_thread
+    return await future
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\anyio\_backends\_asyncio.py", line 976, in run
+    result = context.run(func, *args)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\app\routers\upload.py", line 70, in upload_mri
+    db.commit()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 2030, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 1311, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 1286, in _prepare_impl
+    self.session.flush()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 4331, in flush
+    self._flush(objects)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 4466, in _flush
+    with util.safe_reraise():
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\session.py", line 4427, in _flush
+    flush_context.execute()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\unitofwork.py", line 466, in execute
+    rec.execute(self)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\unitofwork.py", line 642, in execute
+    util.preloaded.orm_persistence.save_obj(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\persistence.py", line 93, in save_obj
+    _emit_insert_statements(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\orm\persistence.py", line 1233, in _emit_insert_statements
+    result = connection.execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\sql\elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\sqlalchemy\engine\default.py", line 951, in do_execute
+    cursor.execute(statement, parameters)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 153, in execute
+    result = self._query(query)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\cursors.py", line 322, in _query
+    conn.query(q)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 575, in query
+    self._affected_rows = self._read_query_result(unbuffered=unbuffered)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 826, in _read_query_result
+    result.read()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 1203, in read
+    first_packet = self.connection._read_packet()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\connections.py", line 782, in _read_packet
+    packet.raise_for_error()
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\protocol.py", line 219, in raise_for_error
+    err.raise_mysql_exception(self._data)
+  File "C:\D-drive\FYP-Code\web\Frontend + Backend\NeuroScanAi\backend\venv\lib\site-packages\pymysql\err.py", line 150, in raise_mysql_exception
+    raise errorclass(errno, errval)
+sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (1054, "Unknown column 'status' in 'field list'")
+[SQL: INSERT INTO mri_scans (patient_id, doctor_id, file_path, status, upload_date, sent_date) VALUES (%(patient_id)s, %(doctor_id)s, %(file_path)s, %(status)s, %(upload_date)s, %(sent_date)s)]
+[parameters: {'patient_id': 13, 'doctor_id': None, 'file_path': 'C:\\D-drive\\FYP-Code\\web\\Frontend + Backend\\NeuroScanAi\\backend\\uploads\\7c5999e059524d0e949cd184bcb82ba6.nii', 'status': 'pending', 'upload_date': datetime.datetime(2026, 4, 12, 11, 28, 7, 967086), 'sent_date': None}]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

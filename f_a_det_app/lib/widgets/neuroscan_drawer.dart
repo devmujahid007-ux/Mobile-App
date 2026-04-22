@@ -62,7 +62,7 @@ class NeuroScanDrawer extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'NeuroScan AI',
+                            'NeuroScan',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
@@ -103,33 +103,6 @@ class NeuroScanDrawer extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Text(
-                'Resources',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: NeuroScanColors.slate500,
-                ),
-              ),
-            ),
-            ListTile(
-              dense: true,
-              title: const Text('Documentation'),
-              onTap: () => _popThen(context, '/about'),
-            ),
-            ListTile(
-              dense: true,
-              title: const Text('Research Papers'),
-              onTap: () => _popThen(context, '/about'),
-            ),
-            ListTile(
-              dense: true,
-              title: const Text('FAQ'),
-              onTap: () => _popThen(context, '/about'),
-            ),
-            const Divider(height: 1),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
                 'Dashboard',
                 style: TextStyle(
                   fontSize: 12,
@@ -155,12 +128,6 @@ class NeuroScanDrawer extends StatelessWidget {
               leading: const Icon(Icons.admin_panel_settings_outlined, size: 22),
               title: const Text('Admin Dashboard'),
               onTap: () => _popThen(context, '/admin-dashboard'),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_outlined),
-              title: const Text('Upload MRI'),
-              onTap: () => _popThen(context, '/upload'),
             ),
             const SizedBox(height: 8),
             if (authSlot == NeuroScanAuthSlot.guest) ...[

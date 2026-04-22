@@ -11,7 +11,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 3));
 
     // Expect to find main home title text
-    expect(find.textContaining('NeuroScan AI'), findsWidgets);
+    expect(find.textContaining('NeuroScan'), findsWidgets);
 
     // Expect that upload button or menu exists
     expect(find.byType(ElevatedButton), findsWidgets);
@@ -21,7 +21,7 @@ void main() {
     if (menuButton.evaluate().isNotEmpty) {
       await tester.tap(menuButton);
       await tester.pumpAndSettle();
-      expect(find.text('Upload MRI'), findsWidgets);
+      expect(find.text('Home'), findsWidgets);
     }
   });
 }

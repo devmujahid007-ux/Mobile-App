@@ -1,0 +1,7 @@
+USING DATABASE: mysql+pymysql://root:admin@localhost:3306/tumer_db
+INFO:     127.0.0.1:62691 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62696 - "GET /mri/patient-scans HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:62697 - "POST /mri/upload HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:62748 - "POST /auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62749 - "GET /mri/patient-scans HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62750 - "POST /mri/upload HTTP/1.1" 200 OK

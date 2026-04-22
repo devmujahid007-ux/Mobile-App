@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../constants/mri_modalities.dart';
 import '../services/auth_guard.dart';
 import '../services/neuroscan_api.dart';
 import '../theme/neuroscan_theme.dart';
@@ -14,6 +14,32 @@ int? _parseId(dynamic v) {
   return int.tryParse('$v');
 }
 
+bool _isLikelyNotFoundMessage(String? message) {
+  final m = (message ?? '').toLowerCase();
+  return m.contains('not found') || m.contains('404');
+}
+
+Map<String, dynamic> _normalizeReportEntry(Map<String, dynamic> r) {
+  return {
+    ...r,
+    'id': _parseId(r['id']),
+    'scan_id': _parseId(r['scan_id']),
+  };
+}
+
+/// Aligns `GET /api/analyses/patient-reports` rows with `/reports` list shape.
+Map<String, dynamic> _normalizePatientReportEntry(Map<String, dynamic> r) {
+  final id = _parseId(r['report_id']) ?? _parseId(r['id']);
+  return {
+    ...r,
+    'id': id,
+    'scan_id': _parseId(r['scan_id']),
+  };
+}
+
+bool _scanIsAlzheimer(Map<String, dynamic> s) =>
+    '${s['scan_kind']}'.toLowerCase() == 'alzheimer';
+
 /// Patient workflow aligned with web `PatientDashboardPage.jsx`.
 class PatientDashboardScreen extends StatefulWidget {
   const PatientDashboardScreen({super.key});
@@ -25,21 +51,28 @@ class PatientDashboardScreen extends StatefulWidget {
 class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
   bool _loading = true;
   bool _uploading = false;
-  String? _error;
-  String? _notice;
+  String? _reportsInfo;
+  String? _reportsError;
+  String? _doctorsFetchError;
   List<Map<String, dynamic>> _scans = [];
   List<Map<String, dynamic>> _reports = [];
   List<Map<String, dynamic>> _doctors = [];
+  Set<int>? _deletingScanIds;
 
-  final Map<String, String?> _uploadPaths = {
-    for (final k in mriModalityKeys) k: null,
-  };
+  PlatformFile? _zipFile;
   int? _uploadDoctorId;
-  final Map<int, int?> _doctorForScan = {};
+
+  /// Brain tumor (ZIP) vs Alzheimer (PNG slice).
+  int _sectionIndex = 0;
+
+  PlatformFile? _pngFile;
+  bool _uploadingAlz = false;
+  int? _uploadDoctorIdAlz;
 
   @override
   void initState() {
     super.initState();
+    _deletingScanIds ??= <int>{};
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final ok = await AuthGuard.redirectIfUnauthenticated(context);
       if (ok) await _load();
@@ -47,172 +80,321 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
-      _error = null;
+      _reportsInfo = null;
+      _reportsError = null;
+      _doctorsFetchError = null;
     });
+
+    String? criticalError;
+    var scans = <Map<String, dynamic>>[];
+    var reports = <Map<String, dynamic>>[];
+    var doctors = <Map<String, dynamic>>[];
+    String? reportsInfo;
+    String? reportsError;
+    String? doctorsFetchError;
+
     try {
-      final scans = await NeuroscanApi.getPatientScans();
-      final reports = await NeuroscanApi.getPatientReports();
-      final doctors = await NeuroscanApi.listDoctors();
-      if (!mounted) return;
-      setState(() {
-        _scans = scans.whereType<Map<String, dynamic>>().toList();
-        _reports = reports.whereType<Map<String, dynamic>>().toList();
-        _doctors = doctors.whereType<Map<String, dynamic>>().toList();
-        if (_doctors.length == 1) {
-          final only = _parseId(_doctors.first['id']);
-          _uploadDoctorId ??= only;
-        }
-        _loading = false;
-      });
+      final raw = await NeuroscanApi.getPatientScans();
+      scans = raw.whereType<Map<String, dynamic>>().toList();
     } on NeuroscanApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
+      criticalError = e.message;
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _loading = false;
-      });
+      criticalError = '$e';
     }
-  }
 
-  List<Map<String, dynamic>> get _pendingScans =>
-      _scans.where((s) => '${s['status']}'.toLowerCase() == 'pending').toList();
-
-  List<Map<String, dynamic>> get _awaitingAnalysis => _scans
-      .where((s) => '${s['status']}'.toLowerCase() == 'sent')
-      .toList();
-
-  List<Map<String, dynamic>> get _awaitingReport => _scans
-      .where((s) => '${s['status']}'.toLowerCase() == 'analyzed')
-      .toList();
-
-  Future<void> _pickUpload(String key) async {
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['nii', 'gz', 'dcm', 'dicom'],
-    );
-    if (res == null || res.files.isEmpty) return;
-    final p = res.files.single.path;
-    setState(() => _uploadPaths[key] = p);
-  }
-
-  Future<void> _submitUpload() async {
-    for (final k in mriModalityKeys) {
-      if (_uploadPaths[k] == null || _uploadPaths[k]!.isEmpty) {
-        setState(() => _error = 'Choose all 4 MRI files (T1C, T1N, T2F, T2W).');
-        return;
+    if (criticalError == null) {
+      try {
+        final raw = await NeuroscanApi.listReports();
+        reports = raw.whereType<Map<String, dynamic>>().map(_normalizeReportEntry).toList();
+      } on NeuroscanApiException catch (e) {
+        if (_isLikelyNotFoundMessage(e.message)) {
+          try {
+            final raw = await NeuroscanApi.getPatientReports();
+            reports = raw.whereType<Map<String, dynamic>>().map(_normalizePatientReportEntry).toList();
+            reportsInfo =
+                'This server does not expose GET /reports; showing reports from the legacy patient-reports endpoint.';
+          } on NeuroscanApiException catch (e2) {
+            reportsError = e2.message;
+          } catch (e2) {
+            reportsError = '$e2';
+          }
+        } else {
+          reportsError = e.message;
+        }
+      } catch (e) {
+        reportsError = '$e';
       }
     }
+
+    try {
+      final raw = await NeuroscanApi.listDoctors();
+      doctors = raw.whereType<Map<String, dynamic>>().toList();
+    } on NeuroscanApiException catch (e) {
+      doctors = [];
+      doctorsFetchError = e.message;
+    } catch (e) {
+      doctors = [];
+      doctorsFetchError = '$e';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _scans = scans;
+      _reports = reports;
+      _doctors = doctors;
+      _reportsInfo = reportsInfo;
+      _reportsError = reportsError;
+      _doctorsFetchError = doctorsFetchError;
+      if (_doctors.length == 1) {
+        _uploadDoctorId ??= _parseId(_doctors.first['id']);
+        _uploadDoctorIdAlz ??= _parseId(_doctors.first['id']);
+      }
+      _loading = false;
+    });
+    if (criticalError != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(criticalError)),
+      );
+    }
+  }
+
+  void _snack(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? NeuroScanColors.red700 : null,
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> get _scansTumor =>
+      _scans.where((s) => !_scanIsAlzheimer(s)).toList();
+  List<Map<String, dynamic>> get _scansAlz =>
+      _scans.where((s) => _scanIsAlzheimer(s)).toList();
+
+  List<Map<String, dynamic>> _pendingFor(List<Map<String, dynamic>> list) => list
+      .where((s) => '${s['status']}'.toLowerCase() == 'pending')
+      .toList();
+  List<Map<String, dynamic>> _withDoctorFor(List<Map<String, dynamic>> list) =>
+      list
+          .where((s) => '${s['status']}'.toLowerCase() == 'sent')
+          .toList()
+        ..addAll(
+          list.where((s) => '${s['status']}'.toLowerCase() == 'analyzed'),
+        );
+
+  int get _openRequestsCountTumor => _withDoctorFor(_scansTumor).length;
+  int get _openRequestsCountAlz => _withDoctorFor(_scansAlz).length;
+  int get _reportsReceivedCount => _reports.length;
+  int get _totalCasesCountTumor => _scansTumor.length;
+  int get _totalCasesCountAlz => _scansAlz.length;
+
+  Future<void> _pickZip() async {
+    // Web + mobile: load file bytes in the picker. Using readStream on web often triggers
+    // "Stream has already been listened to" (single-subscription stream reused by the plugin).
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      withData: true,
+    );
+    if (res == null || res.files.isEmpty) return;
+    setState(() => _zipFile = res.files.single);
+  }
+
+  Future<void> _uploadZip() async {
+    if (_zipFile == null) {
+      _snack('Choose a .zip file to send to your doctor.', error: true);
+      return;
+    }
+    final name = _zipFile!.name.toLowerCase();
+    if (!name.endsWith('.zip')) {
+      _snack('Only .zip archives are accepted.', error: true);
+      return;
+    }
+    // Empty ZIP is validated inside uploadPatientMriZip.
     if (_doctors.isEmpty) {
-      setState(() => _error = 'No doctors registered yet. Ask an admin to add a doctor.');
+      _snack('No doctors are available yet. Ask admin to add a doctor.', error: true);
       return;
     }
     if (_uploadDoctorId == null || _uploadDoctorId! <= 0) {
-      setState(() => _error = 'Select which doctor should receive this MRI.');
+      _snack('Select which doctor should receive this MRI.', error: true);
       return;
     }
-    setState(() {
-      _uploading = true;
-      _error = null;
-      _notice = null;
-    });
+
+    setState(() => _uploading = true);
     try {
-      await NeuroscanApi.uploadMri(
-        filePathsByModality: {
-          for (final e in _uploadPaths.entries) e.key: e.value!,
-        },
-        doctorId: _uploadDoctorId,
+      final created = await NeuroscanApi.uploadPatientMriZip(
+        zipFile: _zipFile!,
+        doctorId: _uploadDoctorId!,
       );
       if (!mounted) return;
+      final createdId = _parseId(created['id']);
+      final createdDoctor = _parseId(created['doctor_id']) ?? _uploadDoctorId;
       setState(() {
-        for (final k in mriModalityKeys) {
-          _uploadPaths[k] = null;
-        }
         _uploading = false;
-        _notice = 'MRI uploaded and assigned to your doctor.';
+        _zipFile = null;
+        _uploadDoctorId = null;
       });
+      _snack(
+        createdId == null
+            ? 'MRI ZIP uploaded and sent to your doctor.'
+            : 'Scan #$createdId uploaded and sent to doctor ID $createdDoctor.',
+      );
       await _load();
     } on NeuroscanApiException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _uploading = false;
-      });
+      setState(() => _uploading = false);
+      _snack(e.message, error: true);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _uploading = false;
-      });
+      setState(() => _uploading = false);
+      _snack('$e', error: true);
     }
   }
 
-  Future<void> _sendPendingToDoctor(int scanId) async {
-    final docId = _doctorForScan[scanId];
-    if (docId == null || docId <= 0) {
-      setState(() => _error = 'Pick a doctor for this scan first.');
+  Future<void> _pickPng() async {
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
+      withData: true,
+    );
+    if (res == null || res.files.isEmpty) return;
+    setState(() => _pngFile = res.files.single);
+  }
+
+  Future<void> _uploadAlzPng() async {
+    if (_pngFile == null) {
+      _snack('Choose a PNG or JPEG brain MRI image.', error: true);
       return;
     }
-    setState(() {
-      _error = null;
-      _notice = null;
-    });
+    final name = _pngFile!.name.toLowerCase();
+    if (!name.endsWith('.png') &&
+        !name.endsWith('.jpg') &&
+        !name.endsWith('.jpeg') &&
+        !name.endsWith('.webp')) {
+      _snack('Only PNG or JPEG images are accepted.', error: true);
+      return;
+    }
+    if (_doctors.isEmpty) {
+      _snack('No doctors are available yet. Ask admin to add a doctor.', error: true);
+      return;
+    }
+    if (_uploadDoctorIdAlz == null || _uploadDoctorIdAlz! <= 0) {
+      _snack('Select which doctor should receive this MRI.', error: true);
+      return;
+    }
+    setState(() => _uploadingAlz = true);
     try {
-      await NeuroscanApi.sendScanToDoctor(scanId: scanId, doctorId: docId);
+      final created = await NeuroscanApi.uploadPatientAlzheimerPng(
+        pngFile: _pngFile!,
+        doctorId: _uploadDoctorIdAlz!,
+      );
       if (!mounted) return;
-      setState(() => _notice = 'Scan #$scanId sent to doctor.');
+      final createdId = _parseId(created['id']);
+      final createdDoctor = _parseId(created['doctor_id']) ?? _uploadDoctorIdAlz;
+      setState(() {
+        _uploadingAlz = false;
+        _pngFile = null;
+        _uploadDoctorIdAlz = null;
+      });
+      _snack(
+        createdId == null
+            ? 'MRI image uploaded and sent to your doctor.'
+            : 'Alzheimer scan #$createdId sent to doctor ID $createdDoctor.',
+      );
       await _load();
     } on NeuroscanApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() => _uploadingAlz = false);
+      _snack(e.message, error: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingAlz = false);
+      _snack('$e', error: true);
     }
   }
 
-  Widget _stat(String title, String value, IconData icon) {
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'pending';
+      case 'sent':
+        return 'sent';
+      case 'analyzed':
+        return 'analyzed';
+      case 'reported':
+        return 'reported';
+      default:
+        return status.toLowerCase();
+    }
+  }
+
+  Color _statusBg(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.yellow.shade100;
+      case 'sent':
+        return Colors.blue.shade100;
+      case 'analyzed':
+        return Colors.purple.shade100;
+      case 'reported':
+        return Colors.green.shade100;
+      default:
+        return NeuroScanColors.slate100;
+    }
+  }
+
+  Color _statusFg(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.yellow.shade900;
+      case 'sent':
+        return Colors.blue.shade900;
+      case 'analyzed':
+        return Colors.purple.shade900;
+      case 'reported':
+        return Colors.green.shade900;
+      default:
+        return NeuroScanColors.slate700;
+    }
+  }
+
+  Widget _statCard(String title, String value, IconData icon) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 6,
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
             ),
           ],
         ),
         child: Row(
           children: [
-            Icon(icon, color: NeuroScanColors.blue600, size: 22),
-            const SizedBox(width: 8),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: NeuroScanColors.blue50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: NeuroScanColors.blue600),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: NeuroScanColors.slate500,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: NeuroScanColors.slate800,
-                    ),
-                  ),
+                  Text(title, style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate500)),
+                  Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: NeuroScanColors.slate800)),
                 ],
               ),
             ),
@@ -222,8 +404,131 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     );
   }
 
+  String _doctorText(Map<String, dynamic>? doctor) {
+    if (doctor == null) return '—';
+    final name = '${doctor['name'] ?? ''}'.trim();
+    final email = '${doctor['email'] ?? ''}'.trim();
+    if (name.isNotEmpty) return name;
+    if (email.isNotEmpty) return email;
+    return 'Doctor';
+  }
+
+  String _fmtDate(dynamic raw) {
+    final s = raw?.toString() ?? '';
+    final dt = DateTime.tryParse(s);
+    if (dt == null) return 'Unknown';
+    final l = dt.toLocal();
+    String t(int n) => n.toString().padLeft(2, '0');
+    return '${l.year}-${t(l.month)}-${t(l.day)} ${t(l.hour)}:${t(l.minute)}';
+  }
+
+  Future<void> _openReport(Map<String, dynamic> linked) async {
+    final rel = '${linked['download_url'] ?? ''}'.trim();
+    if (rel.isNotEmpty) {
+      final url = NeuroscanApi.absoluteUrl(rel);
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        _snack('Invalid report URL.', error: true);
+        return;
+      }
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+      _snack('Could not open report URL.', error: true);
+      return;
+    }
+    final reportId = _parseId(linked['id']) ?? 0;
+    if (reportId <= 0) {
+      if (!mounted) return;
+      _snack('Report is missing an id; try refreshing.', error: true);
+      return;
+    }
+    try {
+      final url = await NeuroscanApi.reportPdfOpenUrl(
+        reportId,
+        download: true,
+        cacheBust: DateTime.now().millisecondsSinceEpoch,
+      );
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        _snack('Invalid report URL.', error: true);
+        return;
+      }
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _snack('Could not open report URL.', error: true);
+      }
+    } on NeuroscanApiException catch (e) {
+      if (!mounted) return;
+      _snack(e.message, error: true);
+    }
+  }
+
+  Future<void> _deleteScanRequest(Map<String, dynamic> scan) async {
+    final scanId = _parseId(scan['id']) ?? 0;
+    if (scanId <= 0) {
+      _snack('Invalid scan id.', error: true);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete request?'),
+        content: const Text(
+          'This will remove the request from both patient and doctor sides.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    if (!mounted) return;
+    setState(() => (_deletingScanIds ??= <int>{}).add(scanId));
+    try {
+      await NeuroscanApi.deletePatientScan(scanId);
+      if (!mounted) return;
+      _snack('Request deleted successfully.');
+      await _load();
+    } on NeuroscanApiException catch (e) {
+      if (!mounted) return;
+      _snack(e.message, error: true);
+    } catch (e) {
+      if (!mounted) return;
+      _snack('$e', error: true);
+    } finally {
+      if (mounted) {
+        setState(() => (_deletingScanIds ??= <int>{}).remove(scanId));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final reportByScanId = <int, Map<String, dynamic>>{};
+    for (final r in _reports) {
+      final sid = _parseId(r['scan_id']);
+      if (sid != null) reportByScanId[sid] = r;
+    }
+    final scansForMode = _sectionIndex == 0 ? _scansTumor : _scansAlz;
+    final reportsForMode = _reports.where((r) {
+      final sid = _parseId(r['scan_id']);
+      if (sid == null) return false;
+      final s = _scans.where((e) => _parseId(e['id']) == sid);
+      if (s.isEmpty) return false;
+      return _sectionIndex == 0 ? !_scanIsAlzheimer(s.first) : _scanIsAlzheimer(s.first);
+    }).toList();
+
     return NeuroScanShell(
       title: 'Patient Dashboard',
       authSlot: NeuroScanAuthSlot.account,
@@ -242,283 +547,563 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (_error != null)
-                    Material(
-                      color: NeuroScanColors.red50,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: NeuroScanColors.red700),
-                        ),
+                  if (_reportsInfo != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: NeuroScanColors.blue50.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: NeuroScanColors.blue100),
+                      ),
+                      child: Text(_reportsInfo!, style: const TextStyle(color: NeuroScanColors.slate700, fontSize: 13)),
+                    ),
+                  if (_reportsError != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Text(
+                        'Reports could not be loaded: $_reportsError',
+                        style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
                       ),
                     ),
-                  if (_notice != null) ...[
-                    const SizedBox(height: 8),
-                    Material(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          _notice!,
-                          style: TextStyle(color: Colors.green.shade800),
+
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment<int>(
+                          value: 0,
+                          label: Text('Brain tumor'),
+                          icon: Icon(Icons.folder_zip_outlined, size: 18),
                         ),
-                      ),
+                        ButtonSegment<int>(
+                          value: 1,
+                          label: Text('Alzheimer'),
+                          icon: Icon(Icons.psychology_alt_outlined, size: 18),
+                        ),
+                      ],
+                      selected: {_sectionIndex},
+                      onSelectionChanged: (s) => setState(() => _sectionIndex = s.first),
                     ),
-                  ],
-                  const SizedBox(height: 12),
+                  ),
+
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stat('Scans', '${_scans.length}', Icons.cloud_upload_outlined),
+                      _statCard(
+                        'Open Requests',
+                        '${_sectionIndex == 0 ? _openRequestsCountTumor : _openRequestsCountAlz}',
+                        Icons.cloud_upload_outlined,
+                      ),
                       const SizedBox(width: 8),
-                      _stat('Reports', '${_reports.length}', Icons.check_circle_outline),
+                      _statCard('Reports Received', '$_reportsReceivedCount', Icons.description_outlined),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stat('With doctor', '${_awaitingAnalysis.length}', Icons.send_outlined),
-                      const SizedBox(width: 8),
-                      _stat('Pending send', '${_pendingScans.length}', Icons.schedule),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _stat('Report pending', '${_awaitingReport.length}', Icons.description_outlined),
+                      _statCard(
+                        'Total Cases',
+                        '${_sectionIndex == 0 ? _totalCasesCountTumor : _totalCasesCountAlz}',
+                        Icons.check_circle_outline,
+                      ),
                       const SizedBox(width: 8),
                       const Expanded(child: SizedBox()),
                     ],
                   ),
-                  if (_pendingScans.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Material(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Text(
-                          '${_pendingScans.length} scan(s) are not assigned to a doctor. '
-                          'Pick a doctor below and tap Send to doctor.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.amber.shade900,
+
+                  if (_sectionIndex == 0 && _pendingFor(_scansTumor).isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Text(
+                        '${_pendingFor(_scansTumor).length} older tumor scan(s) are not linked to a doctor. New uploads always include a doctor.',
+                        style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                  if (_sectionIndex == 1 && _pendingFor(_scansAlz).isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Text(
+                        '${_pendingFor(_scansAlz).length} older Alzheimer scan(s) are not linked to a doctor. New uploads always include a doctor.',
+                        style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                      ),
+                    ),
+                  ],
+
+                  if (_sectionIndex == 0) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          '1 · Brain tumor — Upload MRI (ZIP)',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
+                        ),
+                        const SizedBox(height: 10),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: _uploading ? null : _pickZip,
+                          child: Ink(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: NeuroScanColors.blue400, width: 1.2),
+                              color: NeuroScanColors.blue50.withValues(alpha: 0.35),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(Icons.upload_file, color: NeuroScanColors.blue600, size: 30),
+                                const SizedBox(height: 8),
+                                const Text('MRI scans as one .zip', style: TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _zipFile == null ? 'Choose ZIP file' : _zipFile!.name,
+                                  style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate600),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Upload MRI (4 modalities)',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: NeuroScanColors.slate800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_doctors.isEmpty)
-                    const Text(
-                      'No doctors available. Register a doctor account first.',
-                      style: TextStyle(color: NeuroScanColors.slate600),
-                    )
-                  else ...[
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Doctor who receives this MRI',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _uploadDoctorId,
-                          isExpanded: true,
-                          hint: const Text('Select doctor'),
-                          items: [
-                            for (final d in _doctors)
-                              if (_parseId(d['id']) != null)
-                                DropdownMenuItem(
-                                  value: _parseId(d['id']),
-                                  child: Text('${d['name'] ?? d['email']}'),
-                                ),
-                          ],
-                          onChanged: _uploading
-                              ? null
-                              : (v) => setState(() => _uploadDoctorId = v),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Upload your MRI scans as a ZIP file. Your doctor will review and process it.',
+                          style: TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    for (final k in mriModalityKeys) ...[
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(mriModalityLabels[k] ?? k),
-                        subtitle: Text(
-                          _uploadPaths[k] == null
-                              ? 'No file'
-                              : _uploadPaths[k]!.split(RegExp(r'[/\\]')).last,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: TextButton(
-                          onPressed: _uploading ? null : () => _pickUpload(k),
-                          child: const Text('Browse'),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                    ],
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: _uploading ? null : _submitUpload,
-                      child: _uploading
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Upload & send to doctor'),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Your scans',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: NeuroScanColors.slate800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_scans.isEmpty)
-                    const Text(
-                      'No scans yet.',
-                      style: TextStyle(color: NeuroScanColors.slate500),
-                    )
-                  else
-                    ..._scans.map((s) {
-                      final id = _parseId(s['id']) ?? 0;
-                      final st = '${s['status']}';
-                      final pending = st.toLowerCase() == 'pending';
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'Scan #$id · $st',
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                        const SizedBox(height: 12),
+                        if (_doctorsFetchError != null)
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade200),
+                            ),
+                            child: Text(
+                              'Doctor list failed to load ($_doctorsFetchError). Check that the API includes GET /api/patients/doctors and your account can access it.',
+                              style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                            ),
+                          )
+                        else if (_doctors.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade200),
+                            ),
+                            child: Text(
+                              'No doctors are available. Register at least one doctor account before patients can upload.',
+                              style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                            ),
+                          )
+                        else
+                          InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Doctor who will receive this MRI',
+                              border: OutlineInputBorder(),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int>(
+                                value: _uploadDoctorId,
+                                isExpanded: true,
+                                hint: const Text('Select doctor'),
+                                items: [
+                                  for (final d in _doctors)
+                                    if (_parseId(d['id']) != null)
+                                      DropdownMenuItem<int>(
+                                        value: _parseId(d['id']),
+                                        child: Text('${d['name'] ?? d['email']} | ID ${d['id']}'),
+                                      ),
+                                ],
+                                onChanged: _uploading ? null : (v) => setState(() => _uploadDoctorId = v),
                               ),
-                              if (pending && _doctors.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                DropdownButton<int>(
-                                  value: _doctorForScan[id],
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: _uploading ||
+                                  _zipFile == null ||
+                                  _doctors.isEmpty ||
+                                  _doctorsFetchError != null ||
+                                  _uploadDoctorId == null
+                              ? null
+                              : _uploadZip,
+                          child: _uploading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Text('Upload ZIP & send to doctor'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ],
+
+                  if (_sectionIndex == 1) ...[
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            '2 · Alzheimer — Upload MRI (PNG / JPEG)',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
+                          ),
+                          const SizedBox(height: 10),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: _uploadingAlz ? null : _pickPng,
+                            child: Ink(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: NeuroScanColors.blue400, width: 1.2),
+                                color: NeuroScanColors.blue50.withValues(alpha: 0.35),
+                              ),
+                              child: Column(
+                                children: [
+                                  const Icon(Icons.image_outlined, color: NeuroScanColors.blue600, size: 30),
+                                  const SizedBox(height: 8),
+                                  const Text('Brain MRI slice as .png or .jpeg', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _pngFile == null ? 'Choose image file' : _pngFile!.name,
+                                    style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Upload one axial or representative MRI slice. Your doctor will run Alzheimer screening and send a report.',
+                            style: TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_doctorsFetchError != null)
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.amber.shade200),
+                              ),
+                              child: Text(
+                                'Doctor list failed to load ($_doctorsFetchError).',
+                                style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                              ),
+                            )
+                          else if (_doctors.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.amber.shade200),
+                              ),
+                              child: Text(
+                                'No doctors are available. Register at least one doctor account before patients can upload.',
+                                style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                              ),
+                            )
+                          else
+                            InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText: 'Doctor who will receive this MRI',
+                                border: OutlineInputBorder(),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int>(
+                                  value: _uploadDoctorIdAlz,
                                   isExpanded: true,
-                                  hint: const Text('Assign doctor'),
+                                  hint: const Text('Select doctor'),
                                   items: [
                                     for (final d in _doctors)
                                       if (_parseId(d['id']) != null)
-                                        DropdownMenuItem(
+                                        DropdownMenuItem<int>(
                                           value: _parseId(d['id']),
-                                          child: Text('${d['name'] ?? d['email']}'),
+                                          child: Text('${d['name'] ?? d['email']} | ID ${d['id']}'),
                                         ),
                                   ],
-                                  onChanged: (v) => setState(
-                                    () => _doctorForScan[id] = v,
-                                  ),
+                                  onChanged: _uploadingAlz ? null : (v) => setState(() => _uploadDoctorIdAlz = v),
                                 ),
-                                FilledButton.tonal(
-                                  onPressed: id == 0
-                                      ? null
-                                      : () => _sendPendingToDoctor(id),
-                                  child: const Text('Send to doctor'),
-                                ),
-                              ],
-                            ],
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: _uploadingAlz ||
+                                    _pngFile == null ||
+                                    _doctors.isEmpty ||
+                                    _doctorsFetchError != null ||
+                                    _uploadDoctorIdAlz == null
+                                ? null
+                                : _uploadAlzPng,
+                            child: _uploadingAlz
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text('Upload image & send to doctor'),
                           ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Completed reports',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: NeuroScanColors.slate800,
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_reports.isEmpty)
-                    const Text(
-                      'No finalized reports yet.',
-                      style: TextStyle(color: NeuroScanColors.slate500),
-                    )
-                  else
-                    ..._reports.map((r) {
-                      final rid = _parseId(r['report_id']);
-                      final dl = '${r['download_url'] ?? ''}';
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${r['prediction'] ?? 'Report'}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                ),
+                  ],
+
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _sectionIndex == 0 ? 'My scans (Tumor)' : 'My scans (Alzheimer)',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Confidence: ${r['confidence']}% · ${r['file_name'] ?? ''}',
-                                style: const TextStyle(
-                                  color: NeuroScanColors.slate600,
-                                  fontSize: 13,
-                                ),
+                            ),
+                            Text(
+                              '${scansForMode.length} total',
+                              style: const TextStyle(color: NeuroScanColors.slate500, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (_sectionIndex == 0)
+                          const Text(
+                            'Requests you sent to your doctor. Pending is not yet with a doctor; Sent means clinic has your case; Reported means report is finalized.',
+                            style: TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                          )
+                        else
+                          const Text(
+                            'Status mirrors your doctor workflow. Reported means PDF is ready in Reports from your doctor.',
+                            style: TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                          ),
+                        const SizedBox(height: 10),
+                        if (scansForMode.isEmpty)
+                          Text(
+                            _sectionIndex == 0
+                                ? 'Upload a ZIP to create your first tumor case.'
+                                : 'Upload a PNG or JPEG to create your first Alzheimer case.',
+                            style: const TextStyle(color: NeuroScanColors.slate500),
+                          )
+                        else
+                          ...scansForMode.map((scan) {
+                            final id = _parseId(scan['id']) ?? 0;
+                            final status = '${scan['status'] ?? ''}';
+                            final deleting = (_deletingScanIds ?? const <int>{}).contains(id);
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: NeuroScanColors.slate50,
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  if (rid != null)
-                                    OutlinedButton(
-                                      onPressed: () => Navigator.pushNamed(
-                                        context,
-                                        '/results',
-                                        arguments: {'id': rid},
-                                      ),
-                                      child: const Text('View'),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Scan ID $id', style: const TextStyle(fontSize: 11, color: NeuroScanColors.slate500)),
+                                        Text(
+                                          '${scan['file_name'] ?? 'File #$id'}',
+                                          style: const TextStyle(fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Doctor: ${scan['doctor'] is Map ? _doctorText((scan['doctor'] as Map).cast<String, dynamic>()) : (status.toLowerCase() == 'pending' ? 'Not assigned' : '—')}',
+                                          style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate600),
+                                        ),
+                                        Text(
+                                          'Uploaded: ${_fmtDate(scan['upload_date'])}${scan['sent_date'] != null ? ' · Sent: ${_fmtDate(scan['sent_date'])}' : ''}',
+                                          style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                                        ),
+                                      ],
                                     ),
-                                  if (dl.isNotEmpty)
-                                    FilledButton.tonal(
-                                      onPressed: () {
-                                        final url = NeuroscanApi.absoluteUrl(dl);
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: SelectableText(url),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: _statusBg(status),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _statusLabel(status),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: _statusFg(status),
                                           ),
-                                        );
-                                      },
-                                      child: const Text('PDF link'),
-                                    ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: deleting ? null : () => _deleteScanRequest(scan),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: NeuroScanColors.red700,
+                                          side: BorderSide(color: Colors.red.shade300),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          minimumSize: const Size(0, 0),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        child: deleting
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              )
+                                            : const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
-                            ],
-                          ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.green.shade100),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Reports from your doctor',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
+                              ),
+                            ),
+                            Text(
+                              '${reportsForMode.length} in this module',
+                              style: const TextStyle(color: NeuroScanColors.slate500, fontSize: 12),
+                            ),
+                          ],
                         ),
-                      );
-                    }),
-                  const SizedBox(height: 32),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'PDF reports your doctor has sent to you. Use Download PDF to save the file.',
+                          style: TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                        ),
+                        const SizedBox(height: 10),
+                        if (reportsForMode.isEmpty)
+                          Text(
+                            _sectionIndex == 0
+                                ? 'No reports yet for tumor cases.'
+                                : 'No reports yet for Alzheimer cases.',
+                            style: const TextStyle(color: NeuroScanColors.slate500),
+                          )
+                        else
+                          ...reportsForMode.map((rep) {
+                            final rid = _parseId(rep['id']) ?? 0;
+                            final sid = _parseId(rep['scan_id']) ?? 0;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: NeuroScanColors.slate50,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Report #$rid · Scan #$sid',
+                                          style: const TextStyle(fontWeight: FontWeight.w600, color: NeuroScanColors.slate800),
+                                        ),
+                                        Text(
+                                          'Doctor: ${rep['doctor_name'] ?? '—'}'
+                                          '${rep['created_at'] != null ? ' · ${_fmtDate(rep['created_at'])}' : ''}',
+                                          style: const TextStyle(fontSize: 12, color: NeuroScanColors.slate500),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
+                                    onPressed: rid > 0
+                                        ? () {
+                                            final linked = reportByScanId[sid] ?? rep;
+                                            _openReport(linked);
+                                          }
+                                        : null,
+                                    child: const Text('Download PDF'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),

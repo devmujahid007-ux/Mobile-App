@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/neuroscan_api.dart';
 import '../theme/neuroscan_theme.dart';
 import '../widgets/neuroscan_footer.dart';
 import '../widgets/neuroscan_shell.dart';
@@ -40,16 +41,35 @@ class _ContactScreenState extends State<ContactScreen> {
       _sending = true;
       _status = null;
     });
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-    setState(() {
-      _sending = false;
-      _status = 'Thanks! Your message has been sent.';
-      _name.clear();
-      _email.clear();
-      _subject.clear();
-      _message.clear();
-    });
+    try {
+      await NeuroscanApi.sendContactMessage(
+        name: _name.text,
+        email: _email.text,
+        subject: _subject.text,
+        message: _message.text,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _status = 'Thanks! Your message has been sent.';
+        _name.clear();
+        _email.clear();
+        _subject.clear();
+        _message.clear();
+      });
+    } on NeuroscanApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _status = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _status = 'Failed to send message. Please try again.';
+      });
+    }
   }
 
   @override
@@ -132,7 +152,7 @@ class _ContactScreenState extends State<ContactScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'NeuroScan AI',
+            'NeuroScan',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -142,7 +162,7 @@ class _ContactScreenState extends State<ContactScreen> {
           const SizedBox(height: 12),
           _detailRow(Icons.location_on_outlined, 'Research Lab, Lahore, Pakistan'),
           const SizedBox(height: 8),
-          _detailRow(Icons.email_outlined, 'support@neuroscan.ai'),
+          _detailRow(Icons.email_outlined, 'neuroscan148@gmail.com'),
           const SizedBox(height: 8),
           _detailRow(Icons.phone_outlined, '+92 3334773180'),
         ],

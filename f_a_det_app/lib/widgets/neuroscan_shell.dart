@@ -5,7 +5,7 @@ import '../theme/neuroscan_theme.dart';
 import 'neuroscan_drawer.dart';
 import 'neuroscan_nav_menus.dart';
 
-/// Global layout: web-style sticky header (drawer + Resources + Dashboard + auth).
+/// Global layout: web-style sticky header (drawer + Dashboard + auth).
 class NeuroScanShell extends StatelessWidget {
   final String title;
   final Widget body;
@@ -32,17 +32,6 @@ class NeuroScanShell extends StatelessWidget {
     final narrow = w < 520;
     final compactAuth = w < 420;
 
-    final resources = PopupMenuButton<String>(
-      tooltip: 'Resources',
-      onSelected: (v) =>
-          NeuroScanNavMenus.handleResourcesSelection(context, v),
-      itemBuilder: NeuroScanNavMenus.resourcesItems,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: NeuroScanNavMenus.resourcesTrigger(narrow: narrow),
-      ),
-    );
-
     final dashboard = PopupMenuButton<String>(
       tooltip: 'Dashboard',
       onSelected: (v) =>
@@ -54,7 +43,7 @@ class NeuroScanShell extends StatelessWidget {
       ),
     );
 
-    final List<Widget> navActions = [resources, dashboard];
+    final List<Widget> navActions = [dashboard];
 
     if (authSlot == NeuroScanAuthSlot.guest) {
       if (compactAuth) {
@@ -104,6 +93,7 @@ class NeuroScanShell extends StatelessWidget {
             onPressed: () async {
               await AuthStorage.clearToken();
               if (!context.mounted) return;
+              FocusManager.instance.primaryFocus?.unfocus();
               Navigator.of(context).pushNamedAndRemoveUntil(
                 '/login',
                 (_) => false,

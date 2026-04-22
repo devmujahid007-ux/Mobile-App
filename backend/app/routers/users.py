@@ -15,5 +15,5 @@ def get_db():
         db.close()
 
 @router.get("/", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db), current = Depends(role_required("admin", "superadmin"))):
+def list_users(db: Session = Depends(get_db), current = Depends(role_required("admin"))):
     return db.query(User).all()
