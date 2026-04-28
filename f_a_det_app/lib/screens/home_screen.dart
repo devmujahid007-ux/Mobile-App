@@ -149,16 +149,19 @@ class RecentAnalysis {
 const _mockHomeSteps = <HowItWorksStep>[
   HowItWorksStep(
       step: 1,
-      title: 'Upload MRI',
-      desc: 'Add DICOM/NIfTI or images for analysis.'),
+      title: 'Patient Upload (ZIP MRI)',
+      desc:
+          'Patient uploads MRI ZIP and assigns a doctor; scan appears in doctor workflow.'),
   HowItWorksStep(
       step: 2,
-      title: 'AI Analysis',
-      desc: 'Our models scan for tumor/Alzheimer’s patterns.'),
+      title: 'Doctor Analysis + Report',
+      desc:
+          'Doctor reviews scan, runs analysis, and generates the report PDF on the server.'),
   HowItWorksStep(
       step: 3,
-      title: 'Review & Export',
-      desc: 'See confidence scores and export a PDF report.'),
+      title: 'Send + Patient Download',
+      desc:
+          'Doctor sends report to patient dashboard, and patient downloads the final PDF.'),
 ];
 
 
@@ -338,7 +341,8 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _recent = const [];
         _loadingRecent = false;
-        _errorRecent = 'Failed to load recent analyses.';
+        _errorRecent =
+            'Live feed unavailable right now. Upload a scan to generate new entries.';
       });
     }
   }
@@ -522,17 +526,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 22,
                                       fontWeight: FontWeight.w800,
                                       color: NeuroScanColors.slate900)),
-                              const Text('Brain Tumor & Alzheimer’s Detection',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: NeuroScanColors.slate500)),
                             ],
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
                       const Text(
-                        'Early, accurate MRI-based detection for Brain Tumor & Alzheimer’s',
+                        'Clinical-ready MRI workflow for Brain Tumor and Alzheimer’s reporting',
                         style: TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
@@ -540,11 +540,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: NeuroScanColors.slate900),
                       ),
                       const SizedBox(height: 12),
-                                           const Text(
-                        'Upload MRI scans, get AI-powered analyses with confidence scores, and export professional reports for clinicians and patients.\n'
-                        'Built for research labs and clinical workflows.',
+                      const Text(
+                        'From patient uploads to doctor review and PDF delivery, NeuroScan provides a single workflow for analysis, reporting, and secure handoff between care teams and patients.',
                         style: TextStyle(
-                            color: NeuroScanColors.slate600, fontSize: 15, height: 1.45),
+                            color: NeuroScanColors.slate600,
+                            fontSize: 15,
+                            height: 1.45),
                       ),
                       const SizedBox(height: 12),
                       Wrap(
@@ -559,27 +560,35 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             onPressed: () =>
                                 Navigator.pushNamed(context, '/about'),
-                            child: const Text('Learn More'),
+                            child: const Text('Open Platform'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      RichText(
-                        text: TextSpan(
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: NeuroScanColors.slate500),
-                          children: const [
-                            TextSpan(
-                                text: 'For clinicians: ',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: NeuroScanColors.slate800)),
-                            TextSpan(
-                                text:
-                                    'HIPAA-ready architecture coming soon — contact us for early access.'),
-                          ],
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            '- Role-based dashboards for patients, doctors, and administrators',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: NeuroScanColors.slate600),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            '- Report lifecycle from scan upload to doctor delivery to patient download',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: NeuroScanColors.slate600),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            '- Secure APIs with JWT authentication and audit-friendly data flows',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: NeuroScanColors.slate600),
+                          ),
+                        ],
                       ),
                     ],
                   );
@@ -629,7 +638,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      const Text('Recent analysis',
+                                      const Text('Latest analysis',
                                           style: TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600)),
@@ -673,7 +682,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 48),
 
               // ---------------- Features ----------------
-              const Text('Why NeuroScan',
+              const Text('Core Capabilities',
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -695,21 +704,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     children: const [
                       FeatureCard(
-                        title: 'AI-driven Diagnosis',
+                        title: 'Patient-to-Doctor Intake',
                         desc:
-                            'State-of-the-art convolutional models trained on MRI datasets to detect lesions and patterns.',
+                            'Patients upload ZIP MRI studies and assign doctors directly, preventing unassigned cases.',
                         icon: Icons.add,
                       ),
                       FeatureCard(
-                        title: 'Secure & Compliant',
+                        title: 'Doctor Review and Reporting',
                         desc:
-                            'Design-forward architecture with patient privacy and secure uploads (encryption-ready).',
+                            'Doctors process scans, generate report PDFs, and send finalized reports to patient dashboards.',
                         icon: Icons.lock_outline,
                       ),
                       FeatureCard(
-                        title: 'Clinician Reports',
+                        title: 'Admin Operations',
                         desc:
-                            'Downloadable PDF reports with images, predictions, and AI confidence intervals — ready for EHR upload.',
+                            'Admins manage doctor/patient accounts, monitor platform usage, and maintain clean user lists.',
                         icon: Icons.picture_as_pdf_outlined,
                       ),
                     ],
@@ -720,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 24),
 
               // ---------------- How it works ----------------
-              const Text('How it works',
+              const Text('How The Workflow Runs',
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -806,7 +815,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   TextButton(
                     onPressed: () => Navigator.pushNamed(context, '/results'),
                     child: const Text(
-                      'View all',
+                      'Sign in to view dashboards',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: NeuroScanColors.blue600,
@@ -819,7 +828,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 24),
                   child: Text(
-                    'Loading recent analyses…',
+                    'Loading recent analyses...',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                   ),
                 ),
@@ -835,7 +844,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 24),
                   child: Text(
-                    'No analyses yet. Run your first analysis to see it here.',
+                    'No analyses yet. Your first completed case will appear here.',
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                   ),
                 ),

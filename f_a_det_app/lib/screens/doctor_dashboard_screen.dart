@@ -221,6 +221,14 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   };
   PlatformFile? _alzUploadImage;
 
+  /// Two-step report flow (web parity): draft text after first tap; PDF after second.
+  int? _reportDraftReportId;
+  int? _reportDraftScanId;
+  bool _reportDraftIsAlzheimer = false;
+  TextEditingController? _reportDraftFindings;
+  TextEditingController? _reportDraftAnalysis;
+  TextEditingController? _reportDraftProbs;
+
   bool _rowIsAlzheimer(Map<String, dynamic> r) =>
       '${r['scan_kind']}'.toLowerCase() == 'alzheimer';
 
@@ -266,6 +274,30 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
 
   bool get _hasActiveAlzWorkflow =>
       _alzWorkflowScans.isNotEmpty && _alzWorkflowScanId != null;
+
+  bool get _hasReportDraftForCurrentWorkflow {
+    if (_reportDraftReportId == null || _reportDraftScanId == null) return false;
+    if (_reportDraftIsAlzheimer != (_dashTab == 1)) return false;
+    final cur = _dashTab == 0 ? _tumorWorkflowScanId : _alzWorkflowScanId;
+    return cur != null && cur == _reportDraftScanId;
+  }
+
+  void _disposeReportDraft() {
+    _reportDraftFindings?.dispose();
+    _reportDraftAnalysis?.dispose();
+    _reportDraftProbs?.dispose();
+    _reportDraftFindings = null;
+    _reportDraftAnalysis = null;
+    _reportDraftProbs = null;
+    _reportDraftReportId = null;
+    _reportDraftScanId = null;
+  }
+
+  @override
+  void dispose() {
+    _disposeReportDraft();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -450,6 +482,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       });
       return;
     }
+    if (_reportDraftReportId != null && !_reportDraftIsAlzheimer) {
+      _disposeReportDraft();
+    }
     setState(() {
       _uploadFiles[modality] = picked;
       _modelView = null;
@@ -459,6 +494,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   }
 
   void _clearUpload(String modality) {
+    if (_reportDraftReportId != null && !_reportDraftIsAlzheimer) {
+      _disposeReportDraft();
+    }
     setState(() {
       _uploadFiles[modality] = null;
       _modelView = null;
@@ -467,6 +505,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   }
 
   Future<void> _viewResultPredict() async {
+    if (_reportDraftReportId != null && !_reportDraftIsAlzheimer) {
+      _disposeReportDraft();
+    }
     setState(() {
       _viewBusy = true;
       _error = null;
@@ -527,12 +568,41 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     final name = patient is Map ? patient['name']?.toString() : null;
     final age = patient is Map ? _parseId(patient['age']) : null;
 
+    final finishingDraft =
+        _hasReportDraftForCurrentWorkflow && _reportDraftReportId != null;
+
     setState(() {
       _generateBusy = true;
       _error = null;
-      _notice = null;
+      if (!finishingDraft) _notice = null;
     });
     try {
+      if (finishingDraft) {
+        final rid = _reportDraftReportId!;
+        await NeuroscanApi.finalizeReportPdf(
+          reportId: rid,
+          findingsParagraph: _reportDraftFindings!.text,
+          analysisParagraph: _reportDraftAnalysis!.text,
+          probsParagraph: _reportDraftIsAlzheimer ? _reportDraftProbs!.text : null,
+        );
+        _disposeReportDraft();
+        if (!mounted) return;
+        setState(() {
+          _modelView = null;
+          _notice =
+              'PDF saved on the server. Download opened — use report history to send to the patient when ready.';
+        });
+        await _load(quiet: true);
+        if (mounted) {
+          await _openPdfUrl(
+            rid,
+            download: true,
+            cacheBust: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
+        return;
+      }
+
       final useCurrent = _modelView != null;
       final res = await NeuroscanApi.generateSegmentationReport(
         scanId: id,
@@ -553,20 +623,31 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
             : null,
         currentOutputImageUrl: useCurrent ? _modelView!['output_image_url']?.toString() : null,
         currentModelVersion: useCurrent ? _modelView!['model_version']?.toString() : null,
+        skipPdf: true,
       );
       final rid = _parseId(res['report_id']);
       if (!mounted) return;
+      if (rid == null) {
+        setState(() => _error = 'Report draft was created but the server did not return a report id.');
+        return;
+      }
+      _disposeReportDraft();
+      final isAlz = _dashTab == 1;
       setState(() {
-        _notice = 'Report generated and saved on the server. Open/send it from report history.';
+        _reportDraftReportId = rid;
+        _reportDraftScanId = id;
+        _reportDraftIsAlzheimer = isAlz;
+        _reportDraftFindings =
+            TextEditingController(text: '${res['findings_paragraph'] ?? ''}');
+        _reportDraftAnalysis =
+            TextEditingController(text: '${res['analysis_paragraph'] ?? ''}');
+        _reportDraftProbs = isAlz
+            ? TextEditingController(text: '${res['probs_paragraph'] ?? ''}')
+            : null;
+        _notice =
+            'Review and edit the report text below, then tap the same button again to build and download the PDF.';
       });
       await _load(quiet: true);
-      if (rid != null && mounted) {
-        await _openPdfUrl(
-          rid,
-          download: false,
-          cacheBust: DateTime.now().millisecondsSinceEpoch,
-        );
-      }
     } on NeuroscanApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (e) {
@@ -574,6 +655,82 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     } finally {
       if (mounted) setState(() => _generateBusy = false);
     }
+  }
+
+  Widget _buildReportDraftCard() {
+    if (!_hasReportDraftForCurrentWorkflow ||
+        _reportDraftFindings == null ||
+        _reportDraftAnalysis == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Review report (editable)',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.blue.shade900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Adjust wording below, then tap Download report (PDF).',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reportDraftFindings,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Findings',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reportDraftAnalysis,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Analysis',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+            ),
+            if (_reportDraftIsAlzheimer && _reportDraftProbs != null) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reportDraftProbs,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Class probabilities (shown in PDF)',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _sendReportToPatientRow(int reportId, int patientId) async {
@@ -678,6 +835,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       setState(() => _error = 'Upload PNG/JPG image first.');
       return;
     }
+    if (_reportDraftReportId != null && _reportDraftIsAlzheimer) {
+      _disposeReportDraft();
+    }
     setState(() {
       _alzViewBusy = true;
       _error = null;
@@ -763,7 +923,10 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                         ),
                       ],
                       selected: {_dashTab},
-                      onSelectionChanged: (s) => setState(() => _dashTab = s.first),
+                      onSelectionChanged: (s) => setState(() {
+                        _dashTab = s.first;
+                        _disposeReportDraft();
+                      }),
                     ),
                   ),
                   if (_me != null)
@@ -915,6 +1078,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                 : (v) => setState(() {
                                       _tumorWorkflowScanId = v;
                                       _modelView = null;
+                                      if (_reportDraftReportId != null &&
+                                          !_reportDraftIsAlzheimer &&
+                                          v != _reportDraftScanId) {
+                                        _disposeReportDraft();
+                                      }
                                     }),
                           ),
                           const SizedBox(height: 12),
@@ -1069,7 +1237,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                   onPressed: _generateBusy ||
                                           _tumorWorkflowScanId == null ||
                                           tumorWf.isEmpty ||
-                                          !_canGenerateClinicalPdf
+                                          (!_hasReportDraftForCurrentWorkflow && !_canGenerateClinicalPdf)
                                       ? null
                                       : _generatePdfReport,
                                   child: _generateBusy
@@ -1078,7 +1246,11 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                           width: 22,
                                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                         )
-                                      : const Text('Generate report (PDF)'),
+                                      : Text(
+                                          _hasReportDraftForCurrentWorkflow
+                                              ? 'Download report (PDF)'
+                                              : 'Generate report (PDF)',
+                                        ),
                                 ),
                               ),
                             ],
@@ -1087,11 +1259,12 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               'View result stays disabled until there is a pending patient case (sent or analyzed) '
-                              'and all four modalities are chosen. Generate report (PDF) then stays disabled until '
-                              'View result succeeds — same files and pipeline as that preview.',
+                              'and all four modalities are chosen. Generate report stays disabled until View result '
+                              'succeeds. First tap prepares editable text; second tap builds and downloads the PDF.',
                               style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                             ),
                           ),
+                          _buildReportDraftCard(),
                           if (_modelView != null) ...[
                             const SizedBox(height: 18),
                             Container(
@@ -1240,7 +1413,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                 border: Border.all(color: NeuroScanColors.slate100),
                               ),
                               child: const Text(
-                                'No reports yet. Run View result (/predict), then Generate report (PDF) — the PDF opens and appears here.',
+                                'No reports yet. Run View result (/predict), then Generate report — review text, then tap again to download the PDF.',
                                 style: TextStyle(fontSize: 13, color: NeuroScanColors.slate500),
                               ),
                             )
@@ -1387,7 +1560,14 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                 .toList(),
                             onChanged: alzWf.isEmpty
                                 ? null
-                                : (v) => setState(() => _alzWorkflowScanId = v),
+                                : (v) => setState(() {
+                                      _alzWorkflowScanId = v;
+                                      if (_reportDraftReportId != null &&
+                                          _reportDraftIsAlzheimer &&
+                                          v != _reportDraftScanId) {
+                                        _disposeReportDraft();
+                                      }
+                                    }),
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton.icon(
@@ -1413,6 +1593,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                       withData: true,
                                     );
                                     if (res != null && res.files.isNotEmpty) {
+                                      if (_reportDraftReportId != null && _reportDraftIsAlzheimer) {
+                                        _disposeReportDraft();
+                                      }
                                       setState(() {
                                         _alzUploadImage = res.files.single;
                                         _modelView = null;
@@ -1449,8 +1632,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                           FilledButton(
                             onPressed: _generateBusy ||
                                     _alzWorkflowScanId == null ||
-                                    _modelView == null ||
-                                    (_modelView!['source']?.toString() != 'live_alzheimer')
+                                    (!_hasReportDraftForCurrentWorkflow &&
+                                        (_modelView == null ||
+                                            _modelView!['source']?.toString() != 'live_alzheimer'))
                                 ? null
                                 : _generatePdfReport,
                             child: _generateBusy
@@ -1459,8 +1643,13 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                     height: 20,
                                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                                   )
-                                : const Text('Generate report (PDF)'),
+                                : Text(
+                                    _hasReportDraftForCurrentWorkflow
+                                        ? 'Download report (PDF)'
+                                        : 'Generate report (PDF)',
+                                  ),
                           ),
+                          _buildReportDraftCard(),
                           if (_selectedAlzWorkflowScan?['diagnosis'] != null) ...[
                             const SizedBox(height: 14),
                             Container(
@@ -1660,7 +1849,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                 border: Border.all(color: NeuroScanColors.slate100),
                               ),
                               child: const Text(
-                                'No Alzheimer reports yet. Run View result, then Generate report (PDF).',
+                                'No Alzheimer reports yet. Run View result, then Generate report — review text, then tap again to download the PDF.',
                                 style: TextStyle(fontSize: 13, color: NeuroScanColors.slate500),
                               ),
                             )

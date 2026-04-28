@@ -19,9 +19,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullName = TextEditingController();
   final _email = TextEditingController();
   final _pass = TextEditingController();
-  final _age = TextEditingController();
-  final _license = TextEditingController();
-  final _specialty = TextEditingController();
   bool _loading = false;
   bool _showPass = false;
   String? _error;
@@ -84,26 +81,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     req('fullName', _fullName.text, '');
     req('email', _email.text, '');
     req('password', _pass.text, '');
-    if (_role == _Role.patient) {
-      req('age', _age.text, '');
-    } else {
-      req('license', _license.text, '');
-      req('specialty', _specialty.text, '');
-    }
     final em = _email.text.trim();
     if (em.isNotEmpty && !RegExp(r'\S+@\S+\.\S+').hasMatch(em)) {
       _fieldErr['email'] = 'Invalid email';
     }
     if (_pass.text.isNotEmpty && _pass.text.length < 6) {
       _fieldErr['password'] = 'Min 6 chars';
-    }
-    if (_role == _Role.patient) {
-      final a = int.tryParse(_age.text.trim());
-      if (a == null) {
-        _fieldErr['age'] = 'Enter a valid age';
-      } else if (a < 1 || a > 120) {
-        _fieldErr['age'] = 'Age must be 1–120';
-      }
     }
     return _fieldErr.isEmpty;
   }
@@ -117,17 +100,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
     try {
       final role = _role == _Role.doctor ? 'doctor' : 'patient';
-      final age = _role == _Role.patient ? int.tryParse(_age.text.trim()) : null;
-      final phone = _role == _Role.doctor
-          ? 'License: ${_license.text.trim()} · Specialty: ${_specialty.text.trim()}'
-          : null;
       await NeuroscanApi.register(
         email: _email.text.trim(),
         password: _pass.text,
         role: role,
         name: _fullName.text.trim(),
-        age: age,
-        phone: phone,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/login');
@@ -147,9 +124,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _fullName.dispose();
     _email.dispose();
     _pass.dispose();
-    _age.dispose();
-    _license.dispose();
-    _specialty.dispose();
     super.dispose();
   }
 
@@ -310,34 +284,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
                         ),
-                        if (_role == _Role.patient) ...[
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _age,
-                            keyboardType: TextInputType.number,
-                            decoration: InputDecoration(
-                              labelText: 'Age',
-                              errorText: _fieldErr['age'],
-                            ),
-                          ),
-                        ] else ...[
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _license,
-                            decoration: InputDecoration(
-                              labelText: 'Medical License #',
-                              errorText: _fieldErr['license'],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _specialty,
-                            decoration: InputDecoration(
-                              labelText: 'Specialty',
-                              errorText: _fieldErr['specialty'],
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 22),
                         SizedBox(
                           width: double.infinity,

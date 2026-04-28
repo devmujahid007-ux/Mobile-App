@@ -815,6 +815,7 @@ class NeuroscanApi {
   }
 
   /// Web parity: `POST /api/generate-report` — server-side segmentation + PDF.
+  /// With [skipPdf]: true, matches web doctor flow (draft text first; then [finalizeReportPdf]).
   static Future<Map<String, dynamic>> generateSegmentationReport({
     required int scanId,
     required int patientId,
@@ -828,6 +829,7 @@ class NeuroscanApi {
     Map<String, dynamic>? currentProbs,
     String? currentOutputImageUrl,
     String? currentModelVersion,
+    bool skipPdf = false,
   }) async {
     final headers = await _headersJson(requireAuth: true);
     final res = await _withConnectivityFallback(
@@ -847,7 +849,38 @@ class NeuroscanApi {
           if (currentProbs != null) 'current_probs': currentProbs,
           if (currentOutputImageUrl != null) 'current_output_image_url': currentOutputImageUrl,
           if (currentModelVersion != null) 'current_model_version': currentModelVersion,
+          if (skipPdf) 'skip_pdf': true,
         }),
+      ),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw NeuroscanApiException(_messageFromResponse(res));
+    }
+    return json.decode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Web parity: `POST /api/finalize-report-pdf` after [generateSegmentationReport] with `skipPdf: true`.
+  static Future<Map<String, dynamic>> finalizeReportPdf({
+    required int reportId,
+    required String findingsParagraph,
+    required String analysisParagraph,
+    String? probsParagraph,
+  }) async {
+    if (reportId <= 0) throw NeuroscanApiException('Invalid report id');
+    final headers = await _headersJson(requireAuth: true);
+    final body = <String, dynamic>{
+      'report_id': reportId,
+      'findings_paragraph': findingsParagraph,
+      'analysis_paragraph': analysisParagraph,
+    };
+    if (probsParagraph != null) {
+      body['probs_paragraph'] = probsParagraph;
+    }
+    final res = await _withConnectivityFallback(
+      (base) => http.post(
+        _uriForBase(base, '/api/finalize-report-pdf'),
+        headers: headers,
+        body: json.encode(body),
       ),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
